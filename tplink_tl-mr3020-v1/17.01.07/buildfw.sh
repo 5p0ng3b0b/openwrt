@@ -2,7 +2,7 @@
 
 # Set up variables
 export profile="tl-mr3020-v1"
-export ver="17.01.07"
+export ver="17.01.7"
 export files="$HOME/$profile/files"
 export fwdir="$HOME/$profile/firmware"
 export source="$HOME/$profile/$ver"
