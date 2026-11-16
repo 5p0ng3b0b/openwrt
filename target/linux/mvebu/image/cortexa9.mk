@@ -531,6 +531,6 @@ define Device/lenovo_ix4-300d
 	kmod-fs-ext4 kmod-hwmon-adt7475 \
 	kmod-rtc-pcf8563 kmod-spi-gpio kmod-gpio-74x164 \
 	kmod-gpio-button-hotplug kmod-eeprom-at24 \
-	luci luci-app-attendedsysupgrade
+	luci luci-app-attendedsysupgrade block-mount
 endef
 TARGET_DEVICES += lenovo_ix4-300d

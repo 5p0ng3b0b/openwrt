@@ -1,0 +1,18 @@
+#!/bin/sh
+
+board=$(board_name)
+
+case "$board" in
+lenovo,ix4-300d)
+	# Configure eth0 as dhcp client
+	uci set network.lan.proto='dhcp'
+	uci delete network.lan.ipaddr
+	uci delete network.lan.netmask
+	uci del dhcp.lan.ra_slaac
+	uci set dhcp.lan.ignore='1'
+	uci set dhcp.lan.ra='hybrid'
+	uci set dhcp.lan.dhcpv6='hybrid'
+	uci commit network
+	;;
+esac
+exit 0
