@@ -511,3 +511,26 @@ define Device/zyxel_nas326
   KERNEL_INITRAMFS := kernel-bin | append-dtb | uImage none
 endef
 TARGET_DEVICES += zyxel_nas326
+
+define Device/lenovo_ix4-300d
+  $(Device/NAND-128K)
+  DEVICE_VENDOR := Lenovo
+  DEVICE_MODEL := Iomega ix4-300d
+  SOC := armada-xp-mv78230
+  DEVICE_DTS := armada-xp-lenovo-ix4-300d
+  KERNEL_LOADADDR := 0x02000000
+  KERNEL_SIZE := 16384k
+  KERNEL := kernel-bin | append-dtb | uImage none
+  KERNEL_INITRAMFS := kernel-bin | append-dtb | uImage none
+  IMAGES := sysupgrade.bin
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+  DEVICE_PACKAGES := \
+	kmod-ata-core kmod-ata-marvell-sata \
+	kmod-usb2 kmod-usb3 kmod-usb-storage \
+	kmod-md-mod kmod-md-raid0 kmod-md-raid1 kmod-md-raid10 kmod-md-raid456 \
+	kmod-fs-ext4 kmod-hwmon-adt7475 \
+	kmod-rtc-pcf8563 kmod-spi-gpio kmod-gpio-74x164 \
+	kmod-gpio-button-hotplug kmod-eeprom-at24 \
+	luci luci-app-attendedsysupgrade
+endef
+TARGET_DEVICES += lenovo_ix4-300d
