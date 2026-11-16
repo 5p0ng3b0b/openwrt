@@ -1,26 +1,61 @@
 --- a/arch/arm/boot/dts/marvell/armada-xp-lenovo-ix4-300d.dts
 +++ b/arch/arm/boot/dts/marvell/armada-xp-lenovo-ix4-300d.dts
-@@ -152,16 +152,28 @@
- 			#size-cells = <1>;
+@@ -91,44 +91,34 @@
+ 					nand-on-flash-bbt;
  
- 			partition@0 {
--				label = "U-Boot";
--				reg = <0 0x800000>;
+ 					partitions {
+-						compatible = "fixed-partitions";
+-						#address-cells = <1>;
+-						#size-cells = <1>;
+-
+-						partition@0 {
+-							label = "u-boot";
+-							reg = <0x00000000 0x000e0000>;
+-							read-only;
+-						};
+-
+-						partition@e0000 {
+-							label = "u-boot-env";
+-							reg = <0x000e0000 0x00020000>;
+-							read-only;
+-						};
+-
+-						partition@100000 {
+-							label = "u-boot-env2";
+-							reg = <0x00100000 0x00020000>;
+-							read-only;
+-						};
+-
+-						partition@120000 {
+-							label = "zImage";
+-							reg = <0x00120000 0x00400000>;
+-						};
+-
+-						partition@520000 {
+-							label = "initrd";
+-							reg = <0x00520000 0x00400000>;
+-						};
+-
+-						partition@e00000 {
+-							label = "boot";
+-							reg = <0x00e00000 0x3f200000>;
+-						};
+-					};
+-				};
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
 +				label = "u-boot";
 +				reg = <0x00000000 0x000e0000>;
 +				read-only;
- 			};
--			partition@800000 {
--				label = "Linux";
--				reg = <0x800000 0x800000>;
++			};
 +
 +			partition@e0000 {
 +				label = "u-boot-env";
 +				reg = <0x000e0000 0x00020000>;
- 			};
--			partition@1000000 {
--				label = "Filesystem";
--				reg = <0x1000000 0x3f000000>;
++			};
 +
 +			partition@100000 {
 +				label = "u-boot-env2";
