@@ -1,0 +1,40 @@
+--- a/arch/arm/boot/dts/marvell/armada-xp-lenovo-ix4-300d.dts
++++ b/arch/arm/boot/dts/marvell/armada-xp-lenovo-ix4-300d.dts
+@@ -152,16 +152,28 @@
+ 			#size-cells = <1>;
+ 
+ 			partition@0 {
+-				label = "U-Boot";
+-				reg = <0 0x800000>;
++				label = "u-boot";
++				reg = <0x00000000 0x000e0000>;
++				read-only;
+ 			};
+-			partition@800000 {
+-				label = "Linux";
+-				reg = <0x800000 0x800000>;
++
++			partition@e0000 {
++				label = "u-boot-env";
++				reg = <0x000e0000 0x00020000>;
+ 			};
+-			partition@1000000 {
+-				label = "Filesystem";
+-				reg = <0x1000000 0x3f000000>;
++
++			partition@100000 {
++				label = "u-boot-env2";
++				reg = <0x00100000 0x00020000>;
++			};
++
++			partition@120000 {
++				label = "kernel";
++				reg = <0x00120000 0x01000000>;
++			};
++
++			partition@1120000 {
++				label = "ubi";
++				reg = <0x01120000 0x3eee0000>;
+ 			};
+ 		};
+ 	};
