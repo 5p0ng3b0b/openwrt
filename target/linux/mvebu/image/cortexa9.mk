@@ -48,6 +48,8 @@ endef
 
 define Device/buffalo_ls220de
   $(Device/NAND-128K)
+  FILESYSTEMS := squashfs
+  FILESYSTEMS := squashfs
   DEVICE_VENDOR := Buffalo
   DEVICE_MODEL := LinkStation LS220DE
   KERNEL_UBIFS_OPTS = -m $$(PAGESIZE) -e 124KiB -c 172 -x none
@@ -516,6 +518,9 @@ define Device/lenovo_ix4-300d
   $(Device/NAND-128K)
   DEVICE_VENDOR := Lenovo
   DEVICE_MODEL := Iomega ix4-300d
+  DEVICE_IMG_PREFIX = openwrt_$(VERSION_NUMBER)_lenovo_ix4-300d
+  KERNEL_INITRAMFS_IMAGE = $$(DEVICE_IMG_PREFIX)_initramfs-kernel.bin
+  DEVICE_IMG_NAME = openwrt_$(VERSION_NUMBER)_lenovo_ix4-300d_$$(2)
   SOC := armada-xp-mv78230
   DEVICE_DTS := armada-xp-lenovo-ix4-300d
   UBOOT := ix4-300d-u-boot-with-spl.kwb
