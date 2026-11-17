@@ -1,0 +1,735 @@
+--- a/arch/arm/mach-mvebu/Kconfig
++++ b/arch/arm/mach-mvebu/Kconfig
+@@ -198,6 +198,10 @@
+ 	bool "Support Synology DS414"
+ 	select MV78230
+ 
++config TARGET_LENOVO_IX4_300D
++	bool "Support Lenovo Iomega ix4-300d"
++	select MV78230
++
+ config TARGET_MAXBCM
+ 	bool "Support maxbcm"
+ 	select BOARD_ECC_SUPPORT
+@@ -320,6 +324,7 @@
+ 	default "db-mv784mp-gp" if TARGET_DB_MV784MP_GP
+ 	default "ds116" if TARGET_DS116
+ 	default "ds414" if TARGET_DS414
++	default "ix4-300d" if TARGET_LENOVO_IX4_300D
+ 	default "maxbcm" if TARGET_MAXBCM
+ 	default "n2350" if TARGET_N2350
+ 	default "theadorable" if TARGET_THEADORABLE
+@@ -345,6 +350,7 @@
+ 	default "db-mv784mp-gp" if TARGET_DB_MV784MP_GP
+ 	default "ds116" if TARGET_DS116
+ 	default "ds414" if TARGET_DS414
++	default "lenovo_ix4_300d" if TARGET_LENOVO_IX4_300D
+ 	default "maxbcm" if TARGET_MAXBCM
+ 	default "n2350" if TARGET_N2350
+ 	default "theadorable" if TARGET_THEADORABLE
+@@ -361,6 +367,7 @@
+ 	default "mvebu_alleycat-5" if TARGET_MVEBU_ALLEYCAT5
+ 
+ config SYS_VENDOR
++	default "lenovo" if TARGET_LENOVO_IX4_300D
+ 	default "Marvell" if TARGET_DB_MV784MP_GP
+ 	default "Marvell" if TARGET_MVEBU_ARMADA_37XX
+ 	default "Marvell" if TARGET_DB_88F6720
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -142,6 +142,7 @@
+ 	armada-xp-db-xc3-24g4xg.dtb		\
+ 	armada-xp-gp.dtb			\
+ 	armada-xp-maxbcm.dtb			\
++	armada-xp-lenovo-ix4-300d.dtb		\
+ 	armada-xp-synology-ds414.dtb		\
+ 	armada-xp-theadorable.dtb
+ endif
+--- /dev/null
++++ b/arch/arm/dts/armada-xp-lenovo-ix4-300d.dts
+@@ -0,0 +1,293 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Device Tree file for Lenovo Iomega ix4-300d
++ *
++ * Copyright (C) 2014, Benoit Masson <yahoo@perenite.com>
++ */
++
++/dts-v1/;
++
++#include <dt-bindings/input/input.h>
++#include <dt-bindings/gpio/gpio.h>
++#include "armada-xp-mv78230.dtsi"
++
++/ {
++	model = "Lenovo Iomega ix4-300d";
++	compatible = "lenovo,ix4-300d", "marvell,armadaxp-mv78230",
++		     "marvell,armadaxp", "marvell,armada-370-xp";
++
++	chosen {
++		stdout-path = &uart0;
++	};
++
++	memory@0 {
++		device_type = "memory";
++		reg = <0 0x00000000 0 0x20000000>; /* 512MB */
++	};
++
++	soc {
++		ranges = <MBUS_ID(0xf0, 0x01) 0 0 0xf1000000 0x100000
++			MBUS_ID(0x01, 0x1d) 0 0 0xfff00000 0x100000
++			MBUS_ID(0x09, 0x09) 0 0 0xf1100000 0x10000
++			MBUS_ID(0x09, 0x05) 0 0 0xf1110000 0x10000>;
++
++		internal-regs {
++			serial@12000 {
++				status = "okay";
++			};
++
++			ethernet@70000 {
++				pinctrl-0 = <&ge0_rgmii_pins>;
++				pinctrl-names = "default";
++				status = "okay";
++				phy = <&phy0>;
++				phy-mode = "rgmii-id";
++			};
++
++			ethernet@74000 {
++				pinctrl-0 = <&ge1_rgmii_pins>;
++				pinctrl-names = "default";
++				status = "okay";
++				phy = <&phy1>;
++				phy-mode = "rgmii-id";
++			};
++
++			usb@50000 {
++				status = "okay";
++			};
++
++			usb@51000 {
++				status = "okay";
++			};
++
++			i2c@11000 {
++				clock-frequency = <400000>;
++				status = "okay";
++
++				adt7473@2e {
++					compatible = "adi,adt7473";
++					reg = <0x2e>;
++				};
++
++				eeprom@50 {
++					compatible = "atmel,24c64";
++					reg = <0x50>;
++				};
++
++				pcf8563@51 {
++					compatible = "nxp,pcf8563";
++					reg = <0x51>;
++				};
++
++			};
++
++			nand@d0000 {
++				status = "okay";
++
++				nand@0 {
++					reg = <0>;
++					label = "pxa3xx_nand-0";
++					nand-rb = <0>;
++					nand-on-flash-bbt;
++
++					partitions {
++						compatible = "fixed-partitions";
++						#address-cells = <1>;
++						#size-cells = <1>;
++
++						partition@0 {
++							label = "u-boot";
++							reg = <0x00000000 0x000e0000>;
++							read-only;
++						};
++
++						partition@e0000 {
++							label = "u-boot-env";
++							reg = <0x000e0000 0x00020000>;
++							read-only;
++						};
++
++						partition@100000 {
++							label = "u-boot-env2";
++							reg = <0x00100000 0x00020000>;
++							read-only;
++						};
++
++						partition@120000 {
++							label = "zImage";
++							reg = <0x00120000 0x00400000>;
++						};
++
++						partition@520000 {
++							label = "initrd";
++							reg = <0x00520000 0x00400000>;
++						};
++
++						partition@e00000 {
++							label = "boot";
++							reg = <0x00e00000 0x3f200000>;
++						};
++					};
++				};
++			};
++		};
++	};
++
++	gpio-keys {
++		compatible = "gpio-keys";
++		pinctrl-0 = <&power_button_pin &reset_button_pin
++			&select_button_pin &scroll_button_pin>;
++		pinctrl-names = "default";
++
++		power-button {
++			label = "Power Button";
++			linux,code = <KEY_POWER>;
++			gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>;
++		};
++
++		reset-button {
++			label = "Reset Button";
++			linux,code = <KEY_RESTART>;
++			gpios = <&gpio1 13 GPIO_ACTIVE_LOW>;
++		};
++
++		select-button {
++			label = "Select Button";
++			linux,code = <BTN_SELECT>;
++			gpios = <&gpio1 9 GPIO_ACTIVE_LOW>;
++		};
++
++		scroll-button {
++			label = "Scroll Button";
++			linux,code = <KEY_SCROLLDOWN>;
++			gpios = <&gpio1 10 GPIO_ACTIVE_LOW>;
++		};
++	};
++
++	spi-3 {
++		compatible = "spi-gpio";
++		status = "okay";
++		sck-gpios  = <&gpio0 25 GPIO_ACTIVE_LOW>;
++		mosi-gpios = <&gpio1 15 GPIO_ACTIVE_LOW>; /*gpio 47*/
++		cs-gpios = <&gpio0 27 GPIO_ACTIVE_LOW>;
++		num-chipselects = <1>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		gpio_spi: gpio_spi@0 {
++			compatible = "fairchild,74hc595";
++			gpio-controller;
++			#gpio-cells = <2>;
++			reg = <0>;
++			registers-number = <1>;
++			spi-max-frequency = <100000>;
++		};
++	};
++
++	gpio-leds {
++		compatible = "gpio-leds";
++		pinctrl-0 = <&hdd_led_pin>;
++		pinctrl-names = "default";
++
++		hdd-led {
++			label = "ix4-300d:hdd:blue";
++			gpios = <&gpio0 26 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++		};
++
++		power-led {
++			label = "ix4-300d:power:white";
++			gpios = <&gpio_spi 1 GPIO_ACTIVE_LOW>;
++			/* init blinking while booting */
++			linux,default-trigger = "timer";
++			default-state = "on";
++		};
++
++		sysfail-led {
++			label = "ix4-300d:sysfail:red";
++			gpios = <&gpio_spi 2 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++		};
++
++		sys-led {
++			label = "ix4-300d:sys:blue";
++			gpios = <&gpio_spi 3 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++		};
++
++		hddfail-led {
++			label = "ix4-300d:hddfail:red";
++			gpios = <&gpio_spi 4 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++		};
++
++	};
++
++	/*
++	 * Warning: you need both eth1 & 0 PHY initialized (i.e having
++	 * them up does the tweak) for poweroff to shutdown otherwise it
++	 * reboots
++	 */
++	gpio-poweroff {
++		compatible = "gpio-poweroff";
++		pinctrl-0 = <&poweroff_pin>;
++		pinctrl-names = "default";
++		gpios = <&gpio0 24 GPIO_ACTIVE_HIGH>;
++	};
++};
++&pciec {
++	status = "okay";
++
++	/* Quad port sata: Marvell 88SX7042 */
++	pcie@1,0 {
++		/* Port 0, Lane 0 */
++		status = "okay";
++	};
++
++	/* USB 3.0 xHCI controller: NEC D720200F1 */
++	pcie@5,0 {
++		/* Port 1, Lane 0 */
++		status = "okay";
++	};
++};
++
++&mdio {
++	phy0: ethernet-phy@0 { /* Marvell 88E1318 */
++		reg = <0>;
++	};
++
++	phy1: ethernet-phy@1 { /* Marvell 88E1318 */
++		reg = <1>;
++	};
++};
++
++&pinctrl {
++	poweroff_pin: poweroff-pin {
++		marvell,pins = "mpp24";
++		marvell,function = "gpio";
++	};
++
++	power_button_pin: power-button-pin {
++		marvell,pins = "mpp44";
++		marvell,function = "gpio";
++	};
++
++	reset_button_pin: reset-button-pin {
++		marvell,pins = "mpp45";
++		marvell,function = "gpio";
++	};
++	select_button_pin: select-button-pin {
++		marvell,pins = "mpp41";
++		marvell,function = "gpio";
++	};
++
++	scroll_button_pin: scroll-button-pin {
++		marvell,pins = "mpp42";
++		marvell,function = "gpio";
++	};
++
++	hdd_led_pin: hdd-led-pin {
++		marvell,pins = "mpp26";
++		marvell,function = "gpio";
++	};
++};
+--- /dev/null
++++ b/arch/arm/dts/armada-xp-lenovo-ix4-300d-u-boot.dtsi
+@@ -0,0 +1,44 @@
++// SPDX-License-Identifier: GPL-2.0+
++
++/ {
++/delete-node/ gpio-leds;
++/delete-node/ gpio-keys;
++/delete-node/ gpio-poweroff;
++/delete-node/ spi-3;
++
++soc {
++bootph-all;
++
++internal-regs {
++bootph-all;
++
++serial@12000 {
++bootph-all;
++clock-frequency = <250000000>;
++};
++
++timer@20300 {
++bootph-all;
++};
++
++nand@d0000 {
++num-cs = <1>;
++marvell,nand-enable-arbiter;
++nand-ecc-strength = <4>;
++nand-ecc-step-size = <512>;
++};
++};
++
++pcie@82000000 {
++pcie@2,0 {
++status = "disabled";
++};
++};
++
++pcie@82000000 {
++pcie@2,0 {
++status = "disabled";
++};
++};
++};
++};
+--- /dev/null
++++ b/board/lenovo/ix4-300d/Makefile
+@@ -0,0 +1,3 @@
++# SPDX-License-Identifier: GPL-2.0+
++
++obj-y+= ix4-300d.o
+--- /dev/null
++++ b/board/lenovo/ix4-300d/ix4-300d.c
+@@ -0,0 +1,170 @@
++// SPDX-License-Identifier: GPL-2.0+
++
++#include <env.h>
++#include <init.h>
++#include <miiphy.h>
++#include <asm/global_data.h>
++#include <asm/io.h>
++#include <asm/arch/cpu.h>
++#include <asm/arch/soc.h>
++#include <command.h>
++#include <image.h>
++#include <linux/bitops.h>
++#include <linux/delay.h>
++#include <linux/libfdt.h>
++
++#include "../drivers/ddr/marvell/axp/ddr3_hw_training.h"
++#include "../arch/arm/mach-mvebu/serdes/axp/high_speed_env_spec.h"
++#include "../arch/arm/mach-mvebu/serdes/axp/board_env_spec.h"
++
++DECLARE_GLOBAL_DATA_PTR;
++
++static const u32 ix4_300d_mpp_control[] = {
++0x11111111,/* MPP[0..7]   : GE0 RGMII */
++0x11111111,/* MPP[8..15]  : GE0 RGMII */
++0x22222222,/* MPP[16..23] : GE1 RGMII */
++0x00000000,/* MPP[24..31] : GPIO */
++0x11110000,/* MPP[32..39] : I2C0 & UART0 */
++0x00000000,/* MPP[40..47] : GPIO */
++0x00000000,/* MPP[48..55] */
++0x00000000,/* MPP[56..63] */
++0x00000000/* MPP[64..66] */
++};
++
++/* 512MB DDR3 (4x1Gbit, 32-bit bus width, single CS0) */
++MV_DRAM_MC_INIT ix4_300d_ddr3_b0_667_512m[MV_MAX_DDR3_STATIC_SIZE] = {
++{0x00001400, 0x73014A28},
++{0x00001404, 0x30000800},
++{0x00001408, 0x44148887},
++{0x0000140C, 0x3AD83FEA},
++{0x00001410, 0x10000000},
++{0x00001414, 0x00000000},
++{0x00001418, 0x00000e00},
++{0x00001420, 0x00000004},
++{0x00001424, 0x0000F3FF},
++{0x00001428, 0x000F8830},
++{0x0000142C, 0x054C36F4},
++{0x0000147C, 0x0000C671},
++{0x000014a0, 0x00000001},
++{0x000014a8, 0x00000100},
++{0x00020220, 0x00000006},
++{0x00001494, 0x00010000},
++{0x00001498, 0x00000000},
++{0x0000149C, 0x00000001},
++{0x000014C0, 0x192424C9},
++{0x000014C4, 0x0AAA24C9},
++{0x000200e8, 0x3FFF0E01},
++{0x00020184, 0x3FFFFFE0},
++{0x00001504, 0x1FFFFFE1},
++{0x0000150C, 0x00000000},
++{0x00001514, 0x00000000},
++{0x0000151C, 0x00000000},
++{0x00001538, 0x00000009},
++{0x0000153C, 0x00000009},
++{0x000015D0, 0x00000650},
++{0x000015D4, 0x00000044},
++{0x000015D8, 0x00000010},
++{0x000015DC, 0x00000000},
++{0x000015E4, 0x00203c18},
++{0x000015EC, 0xF800A225},
++{0x0, 0x0}
++};
++
++MV_DRAM_MODES ix4_300d_ddr_modes[MV_DDR3_MODES_NUMBER] = {
++{"ix4_300d_1333-667", 0x3, 0x5, 0x0, A0, ix4_300d_ddr3_b0_667_512m, NULL},
++};
++
++extern MV_SERDES_CHANGE_M_PHY serdes_change_m_phy[];
++
++MV_BIN_SERDES_CFG ix4_300d_serdes_cfg[] = {
++{ MV_PEX_ROOT_COMPLEX, 0x02011111, 0x00000000,
++  { PEX_BUS_MODE_X4, PEX_BUS_MODE_X1, PEX_BUS_DISABLED,
++    PEX_BUS_DISABLED },
++  0x0040, serdes_change_m_phy
++}
++};
++
++MV_DRAM_MODES *ddr3_get_static_ddr_mode(void)
++{
++return &ix4_300d_ddr_modes[0];
++}
++
++MV_BIN_SERDES_CFG *board_serdes_cfg_get(void)
++{
++return &ix4_300d_serdes_cfg[0];
++}
++
++u8 board_sat_r_get(u8 dev_num, u8 reg)
++{
++return 0xf;
++}
++
++int board_early_init_f(void)
++{
++	writel(0x11110000, MVEBU_MPP_BASE + 16);
++	return 0;
++}
++
++static int do_ix4_patch_fdt(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
++{
++	ulong addr = argc > 1 ? hextoul(*(argv + 1), NULL) : 0x04000000;
++	struct legacy_img_hdr *hdr = (struct legacy_img_hdr *)addr;
++	u32 size, off, *cells;
++	void *fdt = NULL;
++	int node, len;
++
++	if (image_get_magic(hdr) != IH_MAGIC) {
++		printf("ix4_patch_fdt: invalid uImage magic at 0x%08lx\n", addr);
++		return CMD_RET_FAILURE;
++	}
++
++	size = image_get_size(hdr);
++	for (off = size & ~3U; off > (size > 0x10000 ? size - 0x10000 : 0); off -= 4) {
++		void *cand = (void *)(addr + sizeof(*hdr) + off);
++		if (fdt_magic(cand) == FDT_MAGIC && fdt_totalsize(cand) <= size - off) {
++			fdt = cand;
++			break;
++		}
++	}
++
++	if (!fdt) {
++		printf("ix4_patch_fdt: appended DTB not found\n");
++		return CMD_RET_FAILURE;
++	}
++
++	node = fdt_path_offset(fdt, "/soc");
++	if (node < 0)
++		return CMD_RET_FAILURE;
++
++	cells = (u32 *)fdt_getprop_w(fdt, node, "ranges", &len);
++	if (!cells || len < 16)
++		return CMD_RET_FAILURE;
++
++	if (fdt32_to_cpu(*(cells + 3)) == 0xd0000000) {
++		*(cells + 3) = cpu_to_fdt32(0xf1000000);
++		printf("ix4_patch_fdt: patched /soc/ranges (0xd0000000 -> 0xf1000000) at 0x%p\n", fdt);
++	}
++
++	return CMD_RET_SUCCESS;
++}
++
++U_BOOT_CMD(
++	ix4_patch_fdt, 2, 0, do_ix4_patch_fdt,
++	"patch appended DTB /soc/ranges for U-Boot 2026.10",
++	"[uimage_addr]"
++);
++
++int board_init(void)
++{
++	mdelay(50);
++	/* Ungate PEX0 and PEX1 clocks (bits 5..8) without leaving PCIe BARs/windows active */
++	setbits_le32(0xf1018220, 0x3e0);
++	gd->bd->bi_boot_params = mvebu_sdram_bar(0) + 0x100;
++	return 0;
++}
++
++int board_late_init(void)
++{
++	pci_init();
++	return 0;
++}
+--- /dev/null
++++ b/include/configs/lenovo_ix4_300d.h
+@@ -0,0 +1,38 @@
++/* SPDX-License-Identifier: GPL-2.0+ */
++
++#ifndef _CONFIG_LENOVO_IX4_300D_H
++#define _CONFIG_LENOVO_IX4_300D_H
++
++#include <asm/arch/soc.h>
++
++#ifndef CFG_SYS_PL310_BASE
++#define CFG_SYS_PL310_BASE(MVEBU_REGISTER(0x08000))
++#endif
++
++#define CFG_I2C_MVTWSI_BASE0MVEBU_TWSI_BASE
++
++#define RELOCATION_LIMITS_ENV_SETTINGS \
++"fdt_high=0x10000000\0"\
++"initrd_high=0x10000000\0"
++
++#include "mv-common.h"
++
++#ifndef CONFIG_XPL_BUILD
++
++#define CFG_EXTRA_ENV_SETTINGS \
++RELOCATION_LIMITS_ENV_SETTINGS \
++"fdtfile=" CONFIG_DEFAULT_DEVICE_TREE ".dtb\0" \
++"console=ttyS0,115200\0" \
++"mtdids=nand0=pxa3xx_nand-0\0" \
++"mtdparts=mtdparts=pxa3xx_nand-0:896k(u-boot),128k(u-boot-env),128k(u-boot-env2),16m(kernel),-(ubi)\0" \
++"bootargs=console=ttyS0,115200 ubi.mtd=4 ubiblock=0,0 root=/dev/ubiblock0_0 rootfstype=squashfs\0" \
++"boot_nand=nand read 0x04000000 0x00120000 0x00800000; ix4_patch_fdt 0x04000000; bootz 0x04000040\0" \
++"bootcmd=run boot_nand\0" \
++"ethaddr=00:D0:B8:24:8F:3D\0" \
++"eth1addr=00:D0:B8:24:8F:3E\0" \
++"ipaddr=192.168.5.12\0" \
++"serverip=192.168.5.100\0"
++
++#endif /* CONFIG_XPL_BUILD */
++
++#endif /* _CONFIG_LENOVO_IX4_300D_H */
+--- /dev/null
++++ b/configs/lenovo_ix4_300d_defconfig
+@@ -0,0 +1,109 @@
++CONFIG_ARM=y
++CONFIG_ARCH_CPU_INIT=y
++CONFIG_SYS_THUMB_BUILD=y
++CONFIG_ARCH_MVEBU=y
++CONFIG_SUPPORT_PASSING_ATAGS=y
++CONFIG_CMDLINE_TAG=y
++CONFIG_INITRD_TAG=y
++CONFIG_TEXT_BASE=0x00800000
++CONFIG_SPL_LIBCOMMON_SUPPORT=y
++CONFIG_SPL_LIBGENERIC_SUPPORT=y
++CONFIG_NR_DRAM_BANKS=1
++CONFIG_HAS_CUSTOM_SYS_INIT_SP_ADDR=y
++CONFIG_CUSTOM_SYS_INIT_SP_ADDR=0xff0000
++CONFIG_TARGET_LENOVO_IX4_300D=y
++CONFIG_DDR_32BIT=y
++CONFIG_MVEBU_SPL_BOOT_DEVICE_NAND=y
++CONFIG_MVEBU_SPL_NAND_BADBLK_LOCATION=0x0
++CONFIG_SYS_NAND_PAGE_SIZE=0x800
++CONFIG_SYS_NAND_BLOCK_SIZE=0x20000
++CONFIG_ENV_SIZE=0x20000
++CONFIG_ENV_SECT_SIZE=0x20000
++CONFIG_ENV_OFFSET=0xe0000
++CONFIG_ENV_OFFSET_REDUND=0x100000
++CONFIG_DEFAULT_DEVICE_TREE="armada-xp-lenovo-ix4-300d"
++CONFIG_SPL_SERIAL=y
++CONFIG_SPL_YMODEM_SUPPORT=y
++CONFIG_SPL_STACK=0x4002c000
++CONFIG_SPL_TEXT_BASE=0x40004030
++CONFIG_SPL_HAS_BSS_LINKER_SECTION=y
++CONFIG_SPL_BSS_START_ADDR=0x40020000
++CONFIG_SPL_BSS_MAX_SIZE=0x4000
++CONFIG_SYS_LOAD_ADDR=0x04000000
++CONFIG_SPL=y
++CONFIG_DEBUG_UART_BASE=0xf1012000
++CONFIG_DEBUG_UART_CLOCK=250000000
++CONFIG_IDENT_STRING="\nLenovo Iomega ix4-300d"
++CONFIG_PCI=y
++CONFIG_DEBUG_UART=y
++CONFIG_DEBUG_UART_ANNOUNCE=y
++CONFIG_BOOTSTD_FULL=y
++CONFIG_BOOTDELAY=3
++CONFIG_USE_BOOTARGS=y
++# CONFIG_DISPLAY_BOARDINFO is not set
++CONFIG_DISPLAY_BOARDINFO_LATE=y
++CONFIG_BOARD_LATE_INIT=y
++CONFIG_SPL_MAX_SIZE=0x1bfd0
++CONFIG_SPL_SYS_MALLOC_SIMPLE=y
++# CONFIG_SPL_SHARES_INIT_SP_ADDR is not set
++CONFIG_SPL_HAVE_INIT_STACK=y
++CONFIG_SPL_I2C=y
++CONFIG_SYS_PROMPT="ix4-300d> "
++CONFIG_SYS_MAXARGS=32
++CONFIG_CMD_I2C=y
++CONFIG_CMD_NAND=y
++CONFIG_CMD_PCI=y
++CONFIG_CMD_USB=y
++CONFIG_CMD_TFTPPUT=y
++CONFIG_CMD_TIME=y
++CONFIG_CMD_MTDPARTS=y
++CONFIG_CMD_UBI=y
++CONFIG_ENV_IS_IN_NAND=y
++# CONFIG_ENV_IS_IN_SPI_FLASH is not set
++CONFIG_SYS_REDUNDAND_ENVIRONMENT=y
++CONFIG_ENV_OVERWRITE=y
++CONFIG_ENV_RELOC_GD_ENV_ADDR=y
++CONFIG_ARP_TIMEOUT=200
++CONFIG_NET_RETRY_COUNT=50
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_SPL_OF_TRANSLATE=y
++CONFIG_SPL_SIMPLE_BUS=y
++CONFIG_SYS_MALLOC_F_LEN=0x10000
++CONFIG_LOGLEVEL=4
++CONFIG_LOG=y
++CONFIG_LOG_MAX_LEVEL=7
++CONFIG_LOG_DEFAULT_LEVEL=4
++CONFIG_LOG_CONSOLE=y
++CONFIG_SIMPLE_BUS=y
++# CONFIG_PINCTRL is not set
++CONFIG_LBA48=y
++CONFIG_SYS_64BIT_LBA=y
++CONFIG_DM_I2C=y
++CONFIG_SYS_I2C_MVTWSI=y
++# CONFIG_MMC is not set
++CONFIG_MTD_RAW_NAND=y
++CONFIG_NAND_PXA3XX=y
++CONFIG_SYS_NAND_ONFI_DETECTION=y
++CONFIG_SYS_NAND_USE_FLASH_BBT=y
++CONFIG_PHY_GIGE=y
++CONFIG_MVNETA=y
++CONFIG_MII=y
++CONFIG_MVMDIO=y
++CONFIG_PHY_ADDR_ENABLE=y
++CONFIG_PHY_ANEG_TIMEOUT=16000
++CONFIG_PHY_MARVELL=y
++CONFIG_PCI_MVEBU=y
++CONFIG_SPL_DEBUG_UART_BASE=0xd0012000
++CONFIG_DEBUG_UART_SHIFT=2
++CONFIG_SYS_NS16550=y
++CONFIG_USB=y
++CONFIG_USB_XHCI_HCD=y
++# CONFIG_USB_XHCI_MVEBU is not set
++CONFIG_USB_XHCI_PCI=y
++CONFIG_USB_EHCI_HCD=y
++CONFIG_SYS_BOOTM_LEN=0x1000000
++CONFIG_SUPPORT_PASSING_ATAGS=y
++CONFIG_CMDLINE_TAG=y
++CONFIG_SETUP_MEMORY_TAGS=y
++CONFIG_BOOTCOMMAND="run boot_nand"
++CONFIG_BOOTARGS="console=ttyS0,115200 ubi.mtd=4 root=/dev/ubiblock0_0 rootfstype=squashfs,ubifs"
+--- a/drivers/mtd/nand/raw/pxa3xx_nand.c
++++ b/drivers/mtd/nand/raw/pxa3xx_nand.c
+@@ -492,8 +492,8 @@
+ 		}
+ 
+ 		if (i == ntypes) {
+-			dev_err(mtd->dev, "Error: timings not found\n");
+-			return -EINVAL;
++			dev_info(mtd->dev, "Using default timings for NAND ID 0x%04x\n", id);
++			f = builtin_flash_types + 1;
+ 		}
+ 
+ 		pxa3xx_nand_set_timing(host, f->timing);

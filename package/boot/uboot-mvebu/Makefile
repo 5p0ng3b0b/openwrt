@@ -51,6 +51,14 @@ define U-Boot/omnia
   UBOOT_IMAGE:=u-boot-with-spl.kwb
 endef
 
+define U-Boot/ix4-300d
+  NAME:=Lenovo Iomega ix4-300d
+  BUILD_DEVICES:=lenovo_ix4-300d
+  BUILD_SUBTARGET:=cortexa9
+  UBOOT_CONFIG:=lenovo_ix4_300d
+  UBOOT_IMAGE:=u-boot-with-spl.kwb
+endef
+
 define U-Boot/espressobin
   NAME:=Marvell ESPRESSObin
   BUILD_SUBTARGET:=cortexa53
@@ -87,6 +95,7 @@ UBOOT_TARGETS:= \
 	clearfog \
 	helios4 \
 	omnia \
+	ix4-300d \
 	espressobin \
 	atlas \
 	uDPU \

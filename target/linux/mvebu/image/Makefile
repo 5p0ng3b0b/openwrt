@@ -122,6 +122,10 @@ define Build/ctera-firmware
 	rm -rf $@.tmp
 endef
 
+define Build/append-uboot
+	cat $(STAGING_DIR_IMAGE)/$(UBOOT) >> $@
+endef
+
 define Build/sdcard-img
 	SIGNATURE="$(IMG_PART_SIGNATURE)" \
 	./gen_mvebu_sdcard_img.sh $@ \

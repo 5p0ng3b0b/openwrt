@@ -518,11 +518,13 @@ define Device/lenovo_ix4-300d
   DEVICE_MODEL := Iomega ix4-300d
   SOC := armada-xp-mv78230
   DEVICE_DTS := armada-xp-lenovo-ix4-300d
+  UBOOT := ix4-300d-u-boot-with-spl.kwb
   KERNEL_LOADADDR := 0x02000000
   KERNEL_SIZE := 16384k
   KERNEL := kernel-bin | append-dtb | uImage none
   KERNEL_INITRAMFS := kernel-bin | append-dtb | uImage none
-  IMAGES := sysupgrade.bin
+  IMAGES := factory.img sysupgrade.bin
+  IMAGE/factory.img := append-uboot | pad-to 1152k | append-kernel | pad-to 17536k | append-ubi
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
   DEVICE_PACKAGES := \
 	kmod-ata-core kmod-ata-marvell-sata \
@@ -531,6 +533,6 @@ define Device/lenovo_ix4-300d
 	kmod-fs-ext4 kmod-hwmon-adt7475 \
 	kmod-rtc-pcf8563 kmod-spi-gpio kmod-gpio-74x164 \
 	kmod-gpio-button-hotplug kmod-eeprom-at24 \
-	luci luci-app-attendedsysupgrade block-mount
+	luci luci-app-attendedsysupgrade block-mount uboot-mvebu-ix4-300d
 endef
 TARGET_DEVICES += lenovo_ix4-300d
