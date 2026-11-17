@@ -528,9 +528,10 @@ define Device/lenovo_ix4-300d
   KERNEL_SIZE := 16384k
   KERNEL := kernel-bin | append-dtb | uImage none
   KERNEL_INITRAMFS := kernel-bin | append-dtb | uImage none
-  IMAGES := factory.img sysupgrade.bin
+  IMAGES := factory.img sysupgrade.bin u-boot.kwb
   IMAGE/factory.img := append-uboot | pad-to 1152k | append-kernel | pad-to 17536k | append-ubi
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+  IMAGE/u-boot.kwb := append-uboot
   DEVICE_PACKAGES := \
 	kmod-ata-core kmod-ata-marvell-sata \
 	kmod-usb2 kmod-usb3 kmod-usb-storage \
