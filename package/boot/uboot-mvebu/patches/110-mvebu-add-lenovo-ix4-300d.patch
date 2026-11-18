@@ -396,7 +396,7 @@
 +obj-y+= ix4-300d.o
 --- /dev/null
 +++ b/board/lenovo/ix4-300d/ix4-300d.c
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,171 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +
 +#include <env.h>
@@ -564,12 +564,13 @@
 +
 +int board_late_init(void)
 +{
-+	pci_init();
++    writel(0x11111111, MVEBU_MPP_BASE + 0x00);
++    writel((readl(MVEBU_MPP_BASE + 0x04) & 0xffff0000) | 0x00001111, MVEBU_MPP_BASE + 0x04);
 +	return 0;
 +}
 --- /dev/null
 +++ b/include/configs/lenovo_ix4_300d.h
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,39 @@
 +/* SPDX-License-Identifier: GPL-2.0+ */
 +
 +#ifndef _CONFIG_LENOVO_IX4_300D_H
@@ -603,14 +604,15 @@
 +"ethaddr=00:D0:B8:24:8F:3D\0" \
 +"eth1addr=00:D0:B8:24:8F:3E\0" \
 +"ipaddr=192.168.5.12\0" \
-+"serverip=192.168.5.100\0"
++"serverip=192.168.5.1\0" \
++"netmask=255.255.255.0\0"
 +
 +#endif /* CONFIG_XPL_BUILD */
 +
 +#endif /* _CONFIG_LENOVO_IX4_300D_H */
 --- /dev/null
 +++ b/configs/lenovo_ix4_300d_defconfig
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,108 @@
 +CONFIG_ARM=y
 +CONFIG_ARCH_CPU_INIT=y
 +CONFIG_SYS_THUMB_BUILD=y
@@ -647,7 +649,7 @@
 +CONFIG_DEBUG_UART_BASE=0xf1012000
 +CONFIG_DEBUG_UART_CLOCK=250000000
 +CONFIG_IDENT_STRING="\nLenovo Iomega ix4-300d"
-+CONFIG_PCI=y
++# CONFIG_PCI is not set
 +CONFIG_DEBUG_UART=y
 +CONFIG_DEBUG_UART_ANNOUNCE=y
 +CONFIG_BOOTSTD_FULL=y
@@ -705,7 +707,6 @@
 +CONFIG_PHY_ADDR_ENABLE=y
 +CONFIG_PHY_ANEG_TIMEOUT=16000
 +CONFIG_PHY_MARVELL=y
-+CONFIG_PCI_MVEBU=y
 +CONFIG_SPL_DEBUG_UART_BASE=0xd0012000
 +CONFIG_DEBUG_UART_SHIFT=2
 +CONFIG_SYS_NS16550=y
