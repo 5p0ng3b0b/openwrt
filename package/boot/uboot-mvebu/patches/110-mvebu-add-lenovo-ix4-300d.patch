@@ -759,7 +759,7 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +#endif /* _CONFIG_LENOVO_IX4_300D_H */
 --- /dev/null
 +++ b/configs/lenovo_ix4_300d_defconfig
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,108 @@
 +CONFIG_ARM=y
 +CONFIG_ARCH_CPU_INIT=y
 +CONFIG_SYS_THUMB_BUILD=y
@@ -797,7 +797,6 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +CONFIG_DEBUG_UART_CLOCK=250000000
 +CONFIG_IDENT_STRING="\nLenovo Iomega ix4-300d"
 +# CONFIG_PCI is not set
-+CONFIG_DEBUG_UART=y
 +CONFIG_DEBUG_UART_ANNOUNCE=y
 +CONFIG_BOOTSTD_FULL=y
 +CONFIG_BOOTDELAY=3
@@ -854,8 +853,7 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +CONFIG_PHY_ADDR_ENABLE=y
 +CONFIG_PHY_ANEG_TIMEOUT=16000
 +CONFIG_PHY_MARVELL=y
-+CONFIG_SPL_DEBUG_UART_BASE=0xd0012000
-+CONFIG_DEBUG_UART_SHIFT=2
++# CONFIG_DEBUG_UART is not set
 +CONFIG_SYS_NS16550=y
 +CONFIG_USB=y
 +CONFIG_USB_XHCI_HCD=y
@@ -869,6 +867,7 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +CONFIG_BOOTCOMMAND="run boot_nand"
 +CONFIG_BOOTARGS="console=ttyS0,115200 ubi.mtd=4 root=/dev/ubiblock0_0 rootfstype=squashfs,ubifs"
 +CONFIG_ENV_CALLBACK_LIST_STATIC="ethaddr:ix4_eth"
++# CONFIG_LOCALVERSION_AUTO is not set
 --- a/drivers/mtd/nand/raw/pxa3xx_nand.c
 +++ b/drivers/mtd/nand/raw/pxa3xx_nand.c
 @@ -492,8 +492,8 @@
@@ -893,3 +892,17 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
  	/* This has to be done after GD_FLG_ENV_READY is set */
  	if (env_update_fdt_addr_from_bloblist())
  		pr_err("Failed to set fdt_addr to point at DTB\n");
+--- a/Makefile	2026-11-18 20:53:03.912195752 +0000
++++ b/Makefile	2026-11-18 20:53:03.912424188 +0000
+@@ -372,6 +372,11 @@
+ 
+ # Read UBOOTRELEASE from include/config/uboot.release (if it exists)
+ UBOOTRELEASE = $(shell cat include/config/uboot.release 2> /dev/null)
++ifneq ($(wildcard $(objtree)/include/config/target/lenovo/ix4/300d.h)$(grep -s CONFIG_TARGET_LENOVO_IX4_300D .config),)
++override LOCALVERSION :=
++unexport SOURCE_DATE_EPOCH
++endif
++
+ UBOOTVERSION = $(VERSION)$(if $(PATCHLEVEL),.$(PATCHLEVEL)$(if $(SUBLEVEL),.$(SUBLEVEL)))$(EXTRAVERSION)
+ export VERSION PATCHLEVEL SUBLEVEL UBOOTRELEASE UBOOTVERSION
+ 
