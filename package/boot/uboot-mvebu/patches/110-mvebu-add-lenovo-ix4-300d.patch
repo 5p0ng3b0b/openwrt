@@ -413,7 +413,7 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +obj-y+= ix4-300d.o
 --- /dev/null
 +++ b/board/lenovo/ix4-300d/ix4-300d.c
-@@ -0,0 +1,301 @@
+@@ -0,0 +1,303 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +
 +#include <cpu_func.h>
@@ -593,6 +593,8 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +	int size;
 +	void (*uboot_entry)(void);
 +
++	if (!env_get("ipaddr"))
++		run_command("run net_init", 0);
 +	image_load_addr = load_addr;
 +	copy_filename(net_boot_file_name, fname, sizeof(net_boot_file_name));
 +	if (net_loop(TFTPGET) < 0) {
@@ -717,7 +719,7 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +}
 --- /dev/null
 +++ b/include/configs/lenovo_ix4_300d.h
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,41 @@
 +/* SPDX-License-Identifier: GPL-2.0+ */
 +
 +#ifndef _CONFIG_LENOVO_IX4_300D_H
@@ -747,19 +749,21 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +"mtdparts=mtdparts=pxa3xx_nand-0:896k(u-boot),128k(u-boot-env),128k(u-boot-env2),16m(kernel),-(ubi)\0" \
 +"bootargs=console=ttyS0,115200 ubi.mtd=4 ubiblock=0,0 root=/dev/ubiblock0_0 rootfstype=squashfs\0" \
 +"boot_nand=nand read 0x04000000 0x00120000 0x00800000; ix4_patch_fdt 0x04000000; bootz 0x04000040\0" \
-+"boot_tftp=tftpboot 0x06000000 uImage-uInitrd.bin; ix4_patch_fdt 0x06000000; bootm 0x06000000\0" \
++"net_init=if test \"$static_ip\" = \"1\"; then test -n \"$ipaddr\" || setenv ipaddr 192.168.1.10; test -n \"$netmask\" || setenv netmask 255.255.255.0; test -n \"$serverip\" || setenv serverip 192.168.1.1; test -n \"$gatewayip\" || setenv gatewayip \"$serverip\"; else if dhcp; then test -n \"$serverip\" || setenv serverip 192.168.1.1; else setenv ipaddr 192.168.1.10; setenv netmask 255.255.255.0; test -n \"$serverip\" || setenv serverip 192.168.1.1; setenv gatewayip \"$serverip\"; fi; fi\0" \
++"boot_tftp=run net_init; tftpboot 0x06000000 uImage-uInitrd.bin; ix4_patch_fdt 0x06000000; bootm 0x06000000\0" \
 +"bootcmd=run boot_nand\0" \
 +"autoload=no\0" \
-+"ipaddr=192.168.5.12\0" \
-+"serverip=192.168.5.1\0" \
-+"netmask=255.255.255.0\0"
++"static_ip=0\0" \
++"netmask=255.255.255.0\0" \
++"serverip=192.168.1.1\0" \
++"gatewayip=192.168.1.1\0"
 +
 +#endif /* CONFIG_XPL_BUILD */
 +
 +#endif /* _CONFIG_LENOVO_IX4_300D_H */
 --- /dev/null
 +++ b/configs/lenovo_ix4_300d_defconfig
-@@ -0,0 +1,108 @@
+@@ -0,0 +1,113 @@
 +CONFIG_ARM=y
 +CONFIG_ARCH_CPU_INIT=y
 +CONFIG_SYS_THUMB_BUILD=y
@@ -866,6 +870,11 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +CONFIG_SETUP_MEMORY_TAGS=y
 +CONFIG_BOOTCOMMAND="run boot_nand"
 +CONFIG_BOOTARGS="console=ttyS0,115200 ubi.mtd=4 root=/dev/ubiblock0_0 rootfstype=squashfs,ubifs"
++CONFIG_CMD_DHCP=y
++CONFIG_BOOTP_GATEWAY=y
++CONFIG_BOOTP_SUBNETMASK=y
++CONFIG_BOOTP_DNS=y
++CONFIG_CMD_DNS=y
 +CONFIG_ENV_CALLBACK_LIST_STATIC="ethaddr:ix4_eth"
 +# CONFIG_LOCALVERSION_AUTO is not set
 --- a/drivers/mtd/nand/raw/pxa3xx_nand.c
