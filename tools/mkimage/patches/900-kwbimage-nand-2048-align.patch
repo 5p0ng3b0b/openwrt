@@ -1,3 +1,11 @@
+From: OpenWrt Maintainers <openwrt-devel@lists.openwrt.org>
+Subject: [PATCH] tools: kwbimage: align NAND v0/v1 headers to 2048-byte pages
+
+Align `IBR_HDR_NAND_ID` kwbimage v0/v1 `headersz` and `srcaddr` to
+2048-byte NAND page boundaries (`headersz == srcaddr`) in host `mkimage`
+so generated Marvell Armada XP NAND boot images pass BootROM 1.15 header
+verification.
+
 --- a/tools/kwbimage.c	2026-11-18 13:43:12.186933171 +0000
 +++ b/tools/kwbimage.c	2026-11-18 13:43:12.187115811 +0000
 @@ -1016,7 +1016,7 @@

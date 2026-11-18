@@ -1,3 +1,16 @@
+From: OpenWrt Maintainers <openwrt-devel@lists.openwrt.org>
+Subject: [PATCH] tools: kwbimage: align NAND v0/v1 headers to 2048-byte pages
+
+Marvell Armada XP BootROM 1.15 on the Lenovo Iomega ix4-300d requires
+NAND kwbimage v1 headers to align both `headersz` and `srcaddr` to
+2048-byte NAND page boundaries (`headersz == srcaddr`) with `nandpagesize`
+set to 0x0 in the main header.
+
+- Align `IBR_HDR_NAND_ID` header offsets to 2048 bytes instead of 256 bytes
+- Set `headersz = *dataoff` in `image_create_v0` and `image_create_v1` for
+  NAND boot images so `headersz` matches `srcaddr` and is checksummed in full
+- Set `KWB_CFG_NAND_PAGE_SIZE = 0x0` in `arch/arm/mach-mvebu/Makefile`
+
 --- a/tools/kwbimage.c	2026-11-18 13:43:12.186933171 +0000
 +++ b/tools/kwbimage.c	2026-11-18 13:43:12.187115811 +0000
 @@ -1016,7 +1016,7 @@

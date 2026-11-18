@@ -1,3 +1,20 @@
+From: OpenWrt Maintainers <openwrt-devel@lists.openwrt.org>
+Subject: [PATCH] arm: mvebu: add Lenovo Iomega ix4-300d board support
+
+Add board support, device tree, DDR3/SerDes configuration, and default
+environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
+- Configure GE0 RGMII MPP pins and Marvell 88E1518 PHYs for dual GbE
+- Ungate PEX0/PEX1 clocks in board_init without triggering U-Boot PCIe
+  enumeration hangs (leaving PCIe/SATA initialization to Linux)
+- Derive deterministic 00:D0:B8:xx:xx:xx MAC addresses (ethaddr, eth0addr,
+  eth1addr) from the MV78230 SoC eFuse registers (0xf10182b0/0xf1018250)
+  on boot and on `env default -a`, and pass them to Linux via FDT
+- Provide `ix4_patch_fdt` to fix appended DTB /soc/ranges and Ethernet MACs
+- Provide `rubt` to TFTP-load and execute a .kwb U-Boot payload in RAM,
+  plus `boot_nand` and `boot_tftp` (uImage-uInitrd.bin) defaults
+- Use default PXA3xx NAND timings when the Micron/Hynix ONFI ID is absent
+  from U-Boot's built-in table
+
 --- a/arch/arm/mach-mvebu/Kconfig
 +++ b/arch/arm/mach-mvebu/Kconfig
 @@ -198,6 +198,10 @@
@@ -396,10 +413,14 @@
 +obj-y+= ix4-300d.o
 --- /dev/null
 +++ b/board/lenovo/ix4-300d/ix4-300d.c
-@@ -0,0 +1,171 @@
+@@ -0,0 +1,301 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +
++#include <cpu_func.h>
 +#include <env.h>
++#include <env_callback.h>
++#include <fdt_support.h>
++#include <net.h>
 +#include <init.h>
 +#include <miiphy.h>
 +#include <asm/global_data.h>
@@ -508,7 +529,9 @@
 +{
 +	ulong addr = argc > 1 ? hextoul(*(argv + 1), NULL) : 0x04000000;
 +	struct legacy_img_hdr *hdr = (struct legacy_img_hdr *)addr;
-+	u32 size, off, *cells;
++	ulong data = addr + sizeof(*hdr);
++	ulong size = 0;
++	u32 off, *cells;
 +	void *fdt = NULL;
 +	int node, len;
 +
@@ -517,9 +540,13 @@
 +		return CMD_RET_FAILURE;
 +	}
 +
-+	size = image_get_size(hdr);
++	if (image_get_type(hdr) == IH_TYPE_MULTI)
++		image_multi_getimg(hdr, 0, &data, &size);
++	else
++		size = image_get_size(hdr);
++
 +	for (off = size & ~3U; off > (size > 0x10000 ? size - 0x10000 : 0); off -= 4) {
-+		void *cand = (void *)(addr + sizeof(*hdr) + off);
++		void *cand = (void *)(data + off);
 +		if (fdt_magic(cand) == FDT_MAGIC && fdt_totalsize(cand) <= size - off) {
 +			fdt = cand;
 +			break;
@@ -544,6 +571,8 @@
 +		printf("ix4_patch_fdt: patched /soc/ranges (0xd0000000 -> 0xf1000000) at 0x%p\n", fdt);
 +	}
 +
++	fdt_fixup_ethernet(fdt);
++
 +	return CMD_RET_SUCCESS;
 +}
 +
@@ -551,6 +580,73 @@
 +	ix4_patch_fdt, 2, 0, do_ix4_patch_fdt,
 +	"patch appended DTB /soc/ranges for U-Boot 2026.10",
 +	"[uimage_addr]"
++);
++
++static int do_rubt(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
++{
++	const char *fname = argc > 1 ? *(argv + 1) : "u-boot-with-spl.kwb";
++	ulong load_addr = 0x04000000;
++	u8 *hdr = (u8 *)load_addr;
++	u32 payload_sz, hdr_sz, src_addr, dest_addr, exec_addr;
++	u8 csum = 0;
++	u32 i;
++	int size;
++	void (*uboot_entry)(void);
++
++	image_load_addr = load_addr;
++	copy_filename(net_boot_file_name, fname, sizeof(net_boot_file_name));
++	if (net_loop(TFTPGET) < 0) {
++		printf("rubt: TFTP transfer failed\n");
++		return CMD_RET_FAILURE;
++	}
++	size = env_get_hex("filesize", 0);
++	if (size < 0x20) {
++		printf("rubt: TFTP transfer failed or file too small\n");
++		return CMD_RET_FAILURE;
++	}
++
++	if (*hdr != 0x8b && *hdr != 0x69 && *hdr != 0x8c && *hdr != 0xae) {
++		printf("rubt: invalid kwbimage magic 0x%02x\n", *hdr);
++		return CMD_RET_FAILURE;
++	}
++
++	payload_sz = readl(hdr + 0x04);
++	hdr_sz = (*(hdr + 0x09) << 16) | readw(hdr + 0x0a);
++	src_addr = readl(hdr + 0x0c);
++	dest_addr = readl(hdr + 0x10);
++	exec_addr = readl(hdr + 0x14);
++
++	if (hdr_sz < 0x20 || src_addr < hdr_sz || (u32)size < src_addr + 0x1000) {
++		printf("rubt: truncated kwbimage (size=0x%x src=0x%x)\n", size, src_addr);
++		return CMD_RET_FAILURE;
++	}
++
++	for (i = 0; i < hdr_sz; i++) {
++		if (i != 0x1f)
++			csum += *(hdr + i);
++	}
++	if (csum != *(hdr + 0x1f)) {
++		printf("rubt: header checksum mismatch (calc=0x%02x hdr=0x%02x)\n", csum, *(hdr + 0x1f));
++		return CMD_RET_FAILURE;
++	}
++
++	if (payload_sz > (u32)size - src_addr)
++		payload_sz = (u32)size - src_addr;
++
++	printf("rubt: running %s in RAM (src=0x%x -> dest=0x%08x, size=0x%x)\n",
++	       fname, src_addr, dest_addr, payload_sz);
++	memcpy((void *)(ulong)dest_addr, hdr + src_addr, payload_sz);
++	cleanup_before_linux();
++	uboot_entry = (void (*)(void))(ulong)exec_addr;
++	uboot_entry();
++
++	return CMD_RET_SUCCESS;
++}
++
++U_BOOT_CMD(
++	rubt, 2, 0, do_rubt,
++	"load a .kwb U-Boot image over TFTP and run it directly in RAM",
++	"[filename]"
 +);
 +
 +int board_init(void)
@@ -562,10 +658,61 @@
 +	return 0;
 +}
 +
++void ix4_populate_hw_macs(void)
++{
++	u32 uid0 = readl(0xf10182b0);
++	u32 uid1 = readl(0xf1018250);
++	u32 h = uid0 ^ (uid1 * 0x9e3779b1U);
++	u32 sfx0, sfx1;
++	static uchar mac0_buf, mac1_buf;
++	static u64 mac0_storage, mac1_storage;
++	uchar *mac0 = (uchar *)&mac0_storage;
++	uchar *mac1 = (uchar *)&mac1_storage;
++	(void)mac0_buf; (void)mac1_buf;
++
++	h ^= h >> 16;
++	h *= 0x85ebca6bU;
++	h ^= h >> 13;
++	sfx0 = h & 0x00ffffffU;
++	if (sfx0 == 0 || sfx0 >= 0x00fffffeU)
++		sfx0 = 0x00248f3dU;
++	sfx1 = (sfx0 + 1U) & 0x00ffffffU;
++
++	*(mac0 + 0) = 0x00;
++	*(mac0 + 1) = 0xd0;
++	*(mac0 + 2) = 0xb8;
++	*(mac0 + 3) = (sfx0 >> 16) & 0xff;
++	*(mac0 + 4) = (sfx0 >> 8) & 0xff;
++	*(mac0 + 5) = sfx0 & 0xff;
++
++	*(mac1 + 0) = 0x00;
++	*(mac1 + 1) = 0xd0;
++	*(mac1 + 2) = 0xb8;
++	*(mac1 + 3) = (sfx1 >> 16) & 0xff;
++	*(mac1 + 4) = (sfx1 >> 8) & 0xff;
++	*(mac1 + 5) = sfx1 & 0xff;
++
++	if (!env_get("ethaddr"))
++		eth_env_set_enetaddr("ethaddr", mac0);
++	if (!env_get("eth0addr") && env_get("ethaddr"))
++		env_set("eth0addr", env_get("ethaddr"));
++	if (!env_get("eth1addr"))
++		eth_env_set_enetaddr("eth1addr", mac1);
++}
++
++static int ix4_on_ethaddr(const char *name, const char *value, enum env_op op, int flags)
++{
++	if (op == env_op_delete)
++		ix4_populate_hw_macs();
++	return 0;
++}
++U_BOOT_ENV_CALLBACK(ix4_eth, ix4_on_ethaddr);
++
 +int board_late_init(void)
 +{
-+    writel(0x11111111, MVEBU_MPP_BASE + 0x00);
-+    writel((readl(MVEBU_MPP_BASE + 0x04) & 0xffff0000) | 0x00001111, MVEBU_MPP_BASE + 0x04);
++	writel(0x11111111, MVEBU_MPP_BASE + 0x00);
++	writel((readl(MVEBU_MPP_BASE + 0x04) & 0xffff0000) | 0x00001111, MVEBU_MPP_BASE + 0x04);
++	ix4_populate_hw_macs();
 +	return 0;
 +}
 --- /dev/null
@@ -600,9 +747,9 @@
 +"mtdparts=mtdparts=pxa3xx_nand-0:896k(u-boot),128k(u-boot-env),128k(u-boot-env2),16m(kernel),-(ubi)\0" \
 +"bootargs=console=ttyS0,115200 ubi.mtd=4 ubiblock=0,0 root=/dev/ubiblock0_0 rootfstype=squashfs\0" \
 +"boot_nand=nand read 0x04000000 0x00120000 0x00800000; ix4_patch_fdt 0x04000000; bootz 0x04000040\0" \
++"boot_tftp=tftpboot 0x06000000 uImage-uInitrd.bin; ix4_patch_fdt 0x06000000; bootm 0x06000000\0" \
 +"bootcmd=run boot_nand\0" \
-+"ethaddr=00:D0:B8:24:8F:3D\0" \
-+"eth1addr=00:D0:B8:24:8F:3E\0" \
++"autoload=no\0" \
 +"ipaddr=192.168.5.12\0" \
 +"serverip=192.168.5.1\0" \
 +"netmask=255.255.255.0\0"
@@ -612,7 +759,7 @@
 +#endif /* _CONFIG_LENOVO_IX4_300D_H */
 --- /dev/null
 +++ b/configs/lenovo_ix4_300d_defconfig
-@@ -0,0 +1,108 @@
+@@ -0,0 +1,109 @@
 +CONFIG_ARM=y
 +CONFIG_ARCH_CPU_INIT=y
 +CONFIG_SYS_THUMB_BUILD=y
@@ -721,6 +868,7 @@
 +CONFIG_SETUP_MEMORY_TAGS=y
 +CONFIG_BOOTCOMMAND="run boot_nand"
 +CONFIG_BOOTARGS="console=ttyS0,115200 ubi.mtd=4 root=/dev/ubiblock0_0 rootfstype=squashfs,ubifs"
++CONFIG_ENV_CALLBACK_LIST_STATIC="ethaddr:ix4_eth"
 --- a/drivers/mtd/nand/raw/pxa3xx_nand.c
 +++ b/drivers/mtd/nand/raw/pxa3xx_nand.c
 @@ -492,8 +492,8 @@
@@ -734,3 +882,14 @@
  		}
  
  		pxa3xx_nand_set_timing(host, f->timing);
+--- a/env/common.c	2026-11-18 19:41:26.518326238 +0000
++++ b/env/common.c	2026-11-18 19:41:26.518403372 +0000
+@@ -410,6 +410,8 @@
+ 	gd->flags |= GD_FLG_ENV_READY;
+ 	gd->flags |= GD_FLG_ENV_DEFAULT;
+ 
++	{ extern void ix4_populate_hw_macs(void); ix4_populate_hw_macs(); }
++
+ 	/* This has to be done after GD_FLG_ENV_READY is set */
+ 	if (env_update_fdt_addr_from_bloblist())
+ 		pr_err("Failed to set fdt_addr to point at DTB\n");
