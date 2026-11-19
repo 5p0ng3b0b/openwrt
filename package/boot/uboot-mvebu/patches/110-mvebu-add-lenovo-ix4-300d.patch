@@ -1,19 +1,30 @@
-From: OpenWrt Maintainers <openwrt-devel@lists.openwrt.org>
-Subject: [PATCH] arm: mvebu: add Lenovo Iomega ix4-300d board support
+Add initial board support for the Lenovo Iomega ix4-300d (Marvell Armada XP
+MV78230, 512 MiB DDR3, 1 GiB NAND, dual GbE, USB 3.0, quad-bay SATA):
 
-Add board support, device tree, DDR3/SerDes configuration, and default
-environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
-- Configure GE0 RGMII MPP pins and Marvell 88E1518 PHYs for dual GbE
+- Configure 512 MiB DDR3 (2x 256 MiB CS0/CS1, 16-bit bus width, 1600H timing)
+  and MV78230 SerDes/PEX topology in SPL
+- Configure GE0/GE1 RGMII MPP pins and Marvell 88E1518 PHYs for dual GbE
 - Ungate PEX0/PEX1 clocks in board_init without triggering U-Boot PCIe
-  enumeration hangs (leaving PCIe/SATA initialization to Linux)
+  enumeration hangs (leaving PCIe/SATA/xHCI initialization to Linux)
+- Reset NFCv2 NAND controller registers on warm Linux reboot and enable
+  NAND_SKIP_BBTSCAN for instant NAND environment/kernel reads
 - Derive deterministic 00:D0:B8:xx:xx:xx MAC addresses (ethaddr, eth0addr,
   eth1addr) from the MV78230 SoC eFuse registers (0xf10182b0/0xf1018250)
   on boot and on `env default -a`, and pass them to Linux via FDT
-- Provide `ix4_patch_fdt` to fix appended DTB /soc/ranges and Ethernet MACs
-- Provide `rubt` to TFTP-load and execute a .kwb U-Boot payload in RAM,
-  plus `boot_nand` and `boot_tftp` (uImage-uInitrd.bin) defaults
-- Use default PXA3xx NAND timings when the Micron/Hynix ONFI ID is absent
-  from U-Boot's built-in table
+- Provide `ix4_patch_fdt` to patch standalone DTBs, uImages, or raw
+  zImage/vmlinuz appended DTBs (/soc/ranges 0xd0000000 -> 0xf1000000 + MACs)
+- Provide `net_init` (DHCP-first with DNS and 192.168.1.10/192.168.1.1
+  static fallback, overridable via `static_ip=1`), `rubt` (RAM .kwb test),
+  `boot_nand`, `boot_tftp`, `boot_usb`, and `boot_recovery` (USB -> TFTP)
+- Detect the rear Reset button (MPP45 / GPIO1_13, active-low) at boot to
+  trigger `boot_recovery` automatically without modifying saved NAND env
+- Drive the front-panel 74HC595 / GPIO LEDs via `show_boot_progress()` so
+  all LEDs remain off during normal boot/kernel handoff and the bottom
+  white LED illuminates while U-Boot is active at the CLI prompt
+- Use clean upstream U-Boot version string and live UTC build timestamp
+  for standalone bootloader use
+
+Signed-off-by: chief <chief@local>
 
 --- a/arch/arm/mach-mvebu/Kconfig
 +++ b/arch/arm/mach-mvebu/Kconfig
