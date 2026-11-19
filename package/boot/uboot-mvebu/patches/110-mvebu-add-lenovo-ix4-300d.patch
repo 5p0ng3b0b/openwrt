@@ -413,10 +413,11 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +obj-y+= ix4-300d.o
 --- /dev/null
 +++ b/board/lenovo/ix4-300d/ix4-300d.c
-@@ -0,0 +1,303 @@
+@@ -0,0 +1,378 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +
 +#include <cpu_func.h>
++#include <bootstage.h>
 +#include <env.h>
 +#include <env_callback.h>
 +#include <fdt_support.h>
@@ -528,33 +529,35 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +static int do_ix4_patch_fdt(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 +{
 +	ulong addr = argc > 1 ? hextoul(*(argv + 1), NULL) : 0x04000000;
++	ulong raw_sz = argc > 2 ? hextoul(*(argv + 2), NULL) : 0x800000;
 +	struct legacy_img_hdr *hdr = (struct legacy_img_hdr *)addr;
-+	ulong data = addr + sizeof(*hdr);
-+	ulong size = 0;
++	ulong data = addr;
++	ulong size = raw_sz;
 +	u32 off, *cells;
 +	void *fdt = NULL;
 +	int node, len;
 +
-+	if (image_get_magic(hdr) != IH_MAGIC) {
-+		printf("ix4_patch_fdt: invalid uImage magic at 0x%08lx\n", addr);
-+		return CMD_RET_FAILURE;
-+	}
-+
-+	if (image_get_type(hdr) == IH_TYPE_MULTI)
-+		image_multi_getimg(hdr, 0, &data, &size);
-+	else
-+		size = image_get_size(hdr);
-+
-+	for (off = size & ~3U; off > (size > 0x10000 ? size - 0x10000 : 0); off -= 4) {
-+		void *cand = (void *)(data + off);
-+		if (fdt_magic(cand) == FDT_MAGIC && fdt_totalsize(cand) <= size - off) {
-+			fdt = cand;
-+			break;
++	if (fdt_magic((void *)addr) == FDT_MAGIC) {
++		fdt = (void *)addr;
++	} else {
++		if (image_get_magic(hdr) == IH_MAGIC) {
++			data = addr + sizeof(*hdr);
++			if (image_get_type(hdr) == IH_TYPE_MULTI)
++				image_multi_getimg(hdr, 0, &data, &size);
++			else
++				size = image_get_size(hdr);
++		}
++		for (off = size & ~3U; off > (size > 0x10000 ? size - 0x10000 : 0); off -= 4) {
++			void *cand = (void *)(data + off);
++			if (fdt_magic(cand) == FDT_MAGIC && fdt_totalsize(cand) <= size - off) {
++				fdt = cand;
++				break;
++			}
 +		}
 +	}
 +
 +	if (!fdt) {
-+		printf("ix4_patch_fdt: appended DTB not found\n");
++		printf("ix4_patch_fdt: DTB not found at 0x%08lx\n", addr);
 +		return CMD_RET_FAILURE;
 +	}
 +
@@ -577,9 +580,9 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +}
 +
 +U_BOOT_CMD(
-+	ix4_patch_fdt, 2, 0, do_ix4_patch_fdt,
-+	"patch appended DTB /soc/ranges for U-Boot 2026.10",
-+	"[uimage_addr]"
++	ix4_patch_fdt, 3, 0, do_ix4_patch_fdt,
++	"patch standalone or appended DTB /soc/ranges and MACs",
++	"[addr] [size]"
 +);
 +
 +static int do_rubt(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
@@ -654,6 +657,10 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +int board_init(void)
 +{
 +	mdelay(50);
++	/* Reset NFCv2 NAND controller (NDCR, NDECCCTRL, NDSR) to cold-boot PIO state */
++	writel(0xfff, 0xf10d0000);
++	writel(0x0, 0xf10d0028);
++	writel(0xfff, 0xf10d0014);
 +	/* Ungate PEX0 and PEX1 clocks (bits 5..8) without leaving PCIe BARs/windows active */
 +	setbits_le32(0xf1018220, 0x3e0);
 +	gd->bd->bi_boot_params = mvebu_sdram_bar(0) + 0x100;
@@ -710,16 +717,84 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +}
 +U_BOOT_ENV_CALLBACK(ix4_eth, ix4_on_ethaddr);
 +
++static void ix4_set_leds(u8 hc595_val, bool hdd_blue)
++{
++	int b;
++
++	/* MPP25 (SCK, gpio0_25), MPP26 (HDD LED, gpio0_26), MPP27 (CS, gpio0_27), MPP47 (MOSI, gpio1_15) */
++	clrbits_le32(MVEBU_MPP_BASE + 0x0c, (0xf << 4) | (0xf << 8) | (0xf << 12));
++	clrbits_le32(MVEBU_MPP_BASE + 0x14, 0xf << 28);
++
++	/* Idle high for active-low SCK/CS/MOSI; set HDD blue LED on GPIO0_26 */
++	setbits_le32(MVEBU_GPIO0_BASE + 0x00, BIT(25) | BIT(27));
++	if (hdd_blue)
++		setbits_le32(MVEBU_GPIO0_BASE + 0x00, BIT(26));
++	else
++		clrbits_le32(MVEBU_GPIO0_BASE + 0x00, BIT(26));
++	setbits_le32(MVEBU_GPIO1_BASE + 0x00, BIT(15));
++
++	/* Configure GPIO0_25/26/27 and GPIO1_15 as outputs (0 = output on Armada XP) */
++	clrbits_le32(MVEBU_GPIO0_BASE + 0x04, BIT(25) | BIT(26) | BIT(27));
++	clrbits_le32(MVEBU_GPIO1_BASE + 0x04, BIT(15));
++
++	/* Assert active-low CS (GPIO0_27 = 0) and shift 8 bits MSB-first into 74HC595 */
++	clrbits_le32(MVEBU_GPIO0_BASE + 0x00, BIT(27));
++	udelay(5);
++	for (b = 7; b >= 0; b--) {
++		/* Active-low MOSI: logical 1 -> physical 0, logical 0 -> physical 1 */
++		if (hc595_val & BIT(b))
++			clrbits_le32(MVEBU_GPIO1_BASE + 0x00, BIT(15));
++		else
++			setbits_le32(MVEBU_GPIO1_BASE + 0x00, BIT(15));
++		udelay(5);
++		/* Active-low SCK pulse: assert (0) then idle (1) */
++		clrbits_le32(MVEBU_GPIO0_BASE + 0x00, BIT(25));
++		udelay(5);
++		setbits_le32(MVEBU_GPIO0_BASE + 0x00, BIT(25));
++		udelay(5);
++	}
++	/* Deassert active-low CS (GPIO0_27 = 1) to latch 74HC595 outputs */
++	setbits_le32(MVEBU_GPIO0_BASE + 0x00, BIT(27));
++}
++
++#ifndef CONFIG_XPL_BUILD
++void show_boot_progress(int status)
++{
++	if (status < 0) {
++		/* Boot failure: Pure Red (active-low bits 3 & 4 low, white bit 1 low) */
++		ix4_set_leds(0, false);
++	} else if (status == BOOTSTAGE_ID_ENTER_CLI_LOOP) {
++		/* Active at U-Boot CLI prompt: Pure Top Blue (red bits 3 & 4 high=off, GPIO0_26 on) */
++		ix4_set_leds(BIT(3) | BIT(4), true);
++	} else if (status == BOOTSTAGE_ID_RUN_OS) {
++		/* Handing off to Linux kernel: Pure Bottom White (bit 1 high, red bits 3 & 4 high=off) */
++		ix4_set_leds(BIT(1) | BIT(3) | BIT(4), false);
++	}
++}
++#endif
++
 +int board_late_init(void)
 +{
 +	writel(0x11111111, MVEBU_MPP_BASE + 0x00);
 +	writel((readl(MVEBU_MPP_BASE + 0x04) & 0xffff0000) | 0x00001111, MVEBU_MPP_BASE + 0x04);
++	/* Configure MPP45 (GPIO1_13, Reset button, active-low) as GPIO input */
++	clrbits_le32(MVEBU_MPP_BASE + 0x14, 0xf << 20);
++	setbits_le32(MVEBU_GPIO1_BASE + 0x04, BIT(13));
 +	ix4_populate_hw_macs();
++	if (!(readl(MVEBU_GPIO1_BASE + 0x10) & BIT(13))) {
++		/* Recovery mode: Pure Red (active-low bits 3 & 4 low, white bit 1 low) */
++		ix4_set_leds(0, false);
++		printf("Reset button pressed - switching to recovery boot (USB -> TFTP)!\n");
++		env_set("bootcmd", "run boot_recovery");
++	} else {
++		/* Normal boot: Pure Bottom White (bit 1 high, red bits 3 & 4 high=off) */
++		ix4_set_leds(BIT(1) | BIT(3) | BIT(4), false);
++	}
 +	return 0;
 +}
 --- /dev/null
 +++ b/include/configs/lenovo_ix4_300d.h
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,43 @@
 +/* SPDX-License-Identifier: GPL-2.0+ */
 +
 +#ifndef _CONFIG_LENOVO_IX4_300D_H
@@ -751,6 +826,8 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +"boot_nand=nand read 0x04000000 0x00120000 0x00800000; ix4_patch_fdt 0x04000000; bootz 0x04000040\0" \
 +"net_init=if test \"$static_ip\" = \"1\"; then test -n \"$ipaddr\" || setenv ipaddr 192.168.1.10; test -n \"$netmask\" || setenv netmask 255.255.255.0; test -n \"$serverip\" || setenv serverip 192.168.1.1; test -n \"$gatewayip\" || setenv gatewayip \"$serverip\"; else if dhcp; then test -n \"$serverip\" || setenv serverip 192.168.1.1; else setenv ipaddr 192.168.1.10; setenv netmask 255.255.255.0; test -n \"$serverip\" || setenv serverip 192.168.1.1; setenv gatewayip \"$serverip\"; fi; fi\0" \
 +"boot_tftp=run net_init; tftpboot 0x06000000 uImage-uInitrd.bin; ix4_patch_fdt 0x06000000; bootm 0x06000000\0" \
++"boot_usb=usb start && (load usb 0:1 0x04000000 zImage || load usb 0:1 0x04000000 /boot/zImage || load usb 0:1 0x04000000 vmlinuz || load usb 0:1 0x04000000 /boot/vmlinuz) && setenv kernel_sz $filesize && if load usb 0:1 0x06000000 initrd.gz || load usb 0:1 0x06000000 /boot/initrd.gz; then setenv rd_arg 0x06000000:$filesize; else setenv rd_arg -; fi && if ix4_patch_fdt 0x04000000 $kernel_sz; then bootz 0x04000000 $rd_arg; else (load usb 0:1 0x05800000 $fdtfile || load usb 0:1 0x05800000 /boot/$fdtfile || load usb 0:1 0x05800000 /boot/dtb/$fdtfile) && ix4_patch_fdt 0x05800000 && bootz 0x04000000 $rd_arg 0x05800000; fi\0" \
++"boot_recovery=run boot_usb || run boot_tftp\0" \
 +"bootcmd=run boot_nand\0" \
 +"autoload=no\0" \
 +"static_ip=0\0" \
@@ -763,7 +840,7 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +#endif /* _CONFIG_LENOVO_IX4_300D_H */
 --- /dev/null
 +++ b/configs/lenovo_ix4_300d_defconfig
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,114 @@
 +CONFIG_ARM=y
 +CONFIG_ARCH_CPU_INIT=y
 +CONFIG_SYS_THUMB_BUILD=y
@@ -819,6 +896,7 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +CONFIG_CMD_NAND=y
 +CONFIG_CMD_PCI=y
 +CONFIG_CMD_USB=y
++CONFIG_SHOW_BOOT_PROGRESS=y
 +CONFIG_CMD_TFTPPUT=y
 +CONFIG_CMD_TIME=y
 +CONFIG_CMD_MTDPARTS=y
@@ -849,7 +927,7 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +CONFIG_MTD_RAW_NAND=y
 +CONFIG_NAND_PXA3XX=y
 +CONFIG_SYS_NAND_ONFI_DETECTION=y
-+CONFIG_SYS_NAND_USE_FLASH_BBT=y
++# CONFIG_SYS_NAND_USE_FLASH_BBT is not set
 +CONFIG_PHY_GIGE=y
 +CONFIG_MVNETA=y
 +CONFIG_MII=y
@@ -914,4 +992,16 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +
  UBOOTVERSION = $(VERSION)$(if $(PATCHLEVEL),.$(PATCHLEVEL)$(if $(SUBLEVEL),.$(SUBLEVEL)))$(EXTRAVERSION)
  export VERSION PATCHLEVEL SUBLEVEL UBOOTRELEASE UBOOTVERSION
+ 
+--- a/drivers/mtd/nand/raw/pxa3xx_nand.c	2026-11-19 00:33:28.337953763 +0000
++++ b/drivers/mtd/nand/raw/pxa3xx_nand.c	2026-11-19 00:33:28.338131825 +0000
+@@ -1675,6 +1675,9 @@
+ 	if (!pdata->keep_config)
+ 		pxa3xx_nand_config_tail(info);
+ 
++#ifdef CONFIG_TARGET_LENOVO_IX4_300D
++	chip->options |= NAND_SKIP_BBTSCAN;
++#endif
+ 	return nand_scan_tail(mtd);
+ }
  
