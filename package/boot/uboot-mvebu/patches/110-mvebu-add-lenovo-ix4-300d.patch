@@ -413,7 +413,7 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +obj-y+= ix4-300d.o
 --- /dev/null
 +++ b/board/lenovo/ix4-300d/ix4-300d.c
-@@ -0,0 +1,378 @@
+@@ -0,0 +1,372 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +
 +#include <cpu_func.h>
@@ -760,15 +760,12 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +#ifndef CONFIG_XPL_BUILD
 +void show_boot_progress(int status)
 +{
-+	if (status < 0) {
-+		/* Boot failure: Pure Red (active-low bits 3 & 4 low, white bit 1 low) */
-+		ix4_set_leds(0, false);
-+	} else if (status == BOOTSTAGE_ID_ENTER_CLI_LOOP) {
-+		/* Active at U-Boot CLI prompt: Pure Top Blue (red bits 3 & 4 high=off, GPIO0_26 on) */
-+		ix4_set_leds(BIT(3) | BIT(4), true);
++	if (status == BOOTSTAGE_ID_ENTER_CLI_LOOP) {
++		/* Active at U-Boot CLI prompt: Top Blue + Bottom White on, Red off (0xff) */
++		ix4_set_leds(0xff, true);
 +	} else if (status == BOOTSTAGE_ID_RUN_OS) {
-+		/* Handing off to Linux kernel: Pure Bottom White (bit 1 high, red bits 3 & 4 high=off) */
-+		ix4_set_leds(BIT(1) | BIT(3) | BIT(4), false);
++		/* Handing off to Linux kernel: Bottom White off, keep Top Blue on, Red off (0xfd) */
++		ix4_set_leds(0xfd, true);
 +	}
 +}
 +#endif
@@ -781,14 +778,11 @@ environment for the Lenovo Iomega ix4-300d (Marvell Armada XP MV78230):
 +	clrbits_le32(MVEBU_MPP_BASE + 0x14, 0xf << 20);
 +	setbits_le32(MVEBU_GPIO1_BASE + 0x04, BIT(13));
 +	ix4_populate_hw_macs();
++	/* Power on indicator: Top Blue on, Bottom White off, Red off (0xfd) */
++	ix4_set_leds(0xfd, true);
 +	if (!(readl(MVEBU_GPIO1_BASE + 0x10) & BIT(13))) {
-+		/* Recovery mode: Pure Red (active-low bits 3 & 4 low, white bit 1 low) */
-+		ix4_set_leds(0, false);
 +		printf("Reset button pressed - switching to recovery boot (USB -> TFTP)!\n");
 +		env_set("bootcmd", "run boot_recovery");
-+	} else {
-+		/* Normal boot: Pure Bottom White (bit 1 high, red bits 3 & 4 high=off) */
-+		ix4_set_leds(BIT(1) | BIT(3) | BIT(4), false);
 +	}
 +	return 0;
 +}
