@@ -48,7 +48,7 @@ Once RAM testing succeeds, reboot back to `Marvell>>` and flash `u-boot-with-spl
 ```text
 tftpboot 0x02000000 u-boot-with-spl.kwb
 nand erase 0x0 0xe0000
-nand write 0x02000000 0x0 \$filesize
+nand write 0x02000000 0x0 $filesize
 reset
 ```
 
