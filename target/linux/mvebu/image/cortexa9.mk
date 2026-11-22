@@ -518,7 +518,7 @@ define Device/lenovo_ix4-300d
   DEVICE_MODEL := Iomega ix4-300d
   SOC := armada-xp-mv78230
   DEVICE_DTS := armada-xp-lenovo-ix4-300d
-  UBOOT := ix4-300d-u-boot-with-spl.kwb
+  UBOOT_PATH := $(STAGING_DIR_IMAGE)/ix4-300d-u-boot-with-spl.kwb
   KERNEL_LOADADDR := 0x02000000
   KERNEL_SIZE := 16384k
   KERNEL := kernel-bin | append-dtb | uImage none
