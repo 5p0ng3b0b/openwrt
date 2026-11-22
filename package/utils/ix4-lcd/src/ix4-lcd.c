@@ -203,9 +203,14 @@ static void puts_fb(int pg, int col, const char *s) {
 }
 
 static int row_split_prefix(const char *s, int *pfx_chars) {
- const char *sep = strstr(s, ": ");
- if (sep && (sep - s) > 0 && (sep - s) <= 12) {
-  *pfx_chars = (int)(sep - s + 2);
+ const char *p, *sep = NULL;
+ int colons = 0;
+ for (p = s; *p; p++) {
+  if (*p == ':') { colons++; sep = p; }
+ }
+ if (colons == 1 && sep && (sep - s) > 0 && (sep - s) <= 12) {
+  int adv = (sep[1] == ' ') ? 2 : 1;
+  *pfx_chars = (int)(sep - s + adv);
   return (*pfx_chars) * 6;
  }
  *pfx_chars = 0;

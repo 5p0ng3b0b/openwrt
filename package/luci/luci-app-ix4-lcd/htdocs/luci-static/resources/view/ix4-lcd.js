@@ -376,8 +376,8 @@ if (txt.length * 6 <= 128 || sc === 'none') {
 ctx.fillStyle = bg; ctx.fillRect(0, r * 24, 384, 24); ctx.fillStyle = fg;
 drawClip(r, txt, 0, 0, 128); continue;
 }
-var splitIdx = txt.indexOf(': '), pfx = '', body = txt, viewX = 0;
-if (splitIdx > 0 && (splitIdx + 2) * 6 <= 78) { pfx = txt.slice(0, splitIdx + 2); body = txt.slice(splitIdx + 2); viewX = pfx.length * 6; }
+var firstColon = txt.indexOf(':'), lastColon = txt.lastIndexOf(':'), pfx = '', body = txt, viewX = 0;
+if (firstColon > 0 && firstColon === lastColon && firstColon <= 12) { var adv = (txt.charAt(firstColon + 1) === ' ') ? 2 : 1; pfx = txt.slice(0, firstColon + adv); body = txt.slice(firstColon + adv); viewX = pfx.length * 6; }
 var viewW = 128 - viewX, bodyPx = body.length * 6;
 if (bodyPx <= viewW) {
 ctx.fillStyle = bg; ctx.fillRect(0, r * 24, 384, 24); ctx.fillStyle = fg;

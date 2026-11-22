@@ -52,7 +52,7 @@ Userspace LCD daemon (`ix4-lcd`) and LuCI web interface (`luci-app-ix4-lcd`) for
 - **`pingpong`:** Scrolls forward to the end, pauses, scrolls back to the start, and repeats.
 - **`reverse`:** Continuous circular wrap in reverse direction.
 - **`reverse_once`:** Scrolls once in reverse, then holds at start.
-- **Static Prefix Pinning:** Any scrolling row containing `": "` (for example `RAID: {raid}`) automatically pins the `Label: ` prefix on the left while scrolling only the value portion.
+- **Static Prefix Pinning:** Any scrolling row containing **exactly one** `:` within the first 12 characters (for example `IP: {ip}`) automatically pins the `Title:` prefix on the left while scrolling only the value portion; rows with `0` or `2+` colons scroll the entire line.
 
 ### 3. `config token` (Custom Dynamic Tokens)
 
