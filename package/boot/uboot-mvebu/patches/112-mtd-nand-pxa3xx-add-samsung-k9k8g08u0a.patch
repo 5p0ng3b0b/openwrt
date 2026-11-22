@@ -1,3 +1,4 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Bob Sponge <myandroidiptvbox@gmail.com>
 Subject: [PATCH] mtd: nand: raw: pxa3xx_nand: add Samsung K9K8G08U0A (0xd3ec) ID
 
