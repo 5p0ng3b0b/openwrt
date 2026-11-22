@@ -1,8 +1,6 @@
 name: Build & Release OpenWrt (Lenovo Iomega ix4-300d)
 
 on:
-  push:
-    tags: [ 'v*' ]
   workflow_dispatch:
     inputs:
       release_tag:
