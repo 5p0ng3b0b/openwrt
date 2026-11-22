@@ -118,11 +118,12 @@ static int fd0 = -1, fd1 = -1;
 static uint64_t b0 = 0, b1 = 0;
 static uint8_t fb[8][128];
 static char pages[MAX_PAGES][8][MAX_TPL];
+static uint8_t page_scroll[MAX_PAGES][8];
 static char page_bmp[MAX_PAGES][128];
 static char page_b64[MAX_PAGES][1600];
 static int page_bmp_inv[MAX_PAGES];
 static char rendered[8][MAX_OUT];
-static int num_pages = 0, cfg_def_pg = 1, cfg_bl = 3, cfg_inv = 1, cfg_con = 38, cfg_ref = 5, cfg_auto = 0, cfg_ms = 400, cfg_save = 1, cfg_err = 0, err_sleep = 0;
+static int num_pages = 0, cfg_def_pg = 1, cfg_bl = 3, cfg_inv = 1, cfg_con = 38, cfg_ref = 5, cfg_auto = 0, cfg_ms = 400, cfg_px = 6, cfg_save = 1, cfg_err = 0, err_sleep = 0;
 static uint64_t prev_rx = 0, prev_tx = 0, prev_ns = 0, cur_rx_bps = 0, cur_tx_bps = 0;
 static uint64_t prev_cpu_busy = 0, prev_cpu_tot = 0;
 
@@ -184,12 +185,49 @@ static void save_uci_opt(const char *opt, int val) {
  if (system(cmd) < 0) {}
 }
 
-static void puts_fb(int pg, int col, const char *s) {
- while (*s && col <= 122) {
+static void puts_fb_clip(int pg, int x, int clip_l, int clip_r, const char *s) {
+ if (clip_l < 0) clip_l = 0;
+ if (clip_r > 128) clip_r = 128;
+ while (*s && x < clip_r) {
   int k = (*s >= 32 && *s <= 122) ? (*s - 32) : 0, i; s++;
-  for (i = 0; i < 5; i++) fb[pg][col++] = font5x7[k][i];
-  if (col < 128) fb[pg][col++] = 0;
+  for (i = 0; i < 5; i++, x++) {
+   if (x >= clip_l && x < clip_r) fb[pg][x] = font5x7[k][i];
+  }
+  if (x >= clip_l && x < clip_r) fb[pg][x] = 0;
+  x++;
  }
+}
+
+static void puts_fb(int pg, int col, const char *s) {
+ puts_fb_clip(pg, col, 0, 128, s);
+}
+
+static int row_split_prefix(const char *s, int *pfx_chars) {
+ const char *sep = strstr(s, ": ");
+ if (sep && (sep - s) > 0 && (sep - s) <= 12) {
+  *pfx_chars = (int)(sep - s + 2);
+  return (*pfx_chars) * 6;
+ }
+ *pfx_chars = 0;
+ return 0;
+}
+
+static int row_needs_scroll(int cur_pg, int r, int tick) {
+ int len = (int)strlen(rendered[r]);
+ uint8_t mode = page_scroll[cur_pg][r];
+ if (len <= 21 || mode == 1) return 0;
+ int pfx_c = 0, pfx_px = row_split_prefix(rendered[r], &pfx_c);
+ int val_len = len - pfx_c, avail = 128 - pfx_px;
+ int val_px = val_len * 6;
+ if (val_px <= avail) return 0;
+ int pause = (1200 / cfg_ms) < 2 ? 2 : (1200 / cfg_ms);
+ int step = (cfg_px > 0) ? cfg_px : 6;
+ if (mode == 2 || mode == 5) {
+  int span = (val_len + 3) * 6;
+  int max_t = pause + (span + step - 1) / step;
+  return tick <= max_t;
+ }
+ return 1;
 }
 
 static void flush_fb(void) {
@@ -270,7 +308,8 @@ static void load_conf(const char *path) {
    else if (!strcmp(p, "contrast")) cfg_con = atoi(eq) & 63;
    else if (!strcmp(p, "refresh")) { cfg_ref = atoi(eq); if (cfg_ref < 1) cfg_ref = 1; }
    else if (!strcmp(p, "auto_scroll")) cfg_auto = atoi(eq) ? 1 : 0;
-   else if (!strcmp(p, "marquee_ms")) { cfg_ms = atoi(eq); if (cfg_ms < 100) cfg_ms = 100; }
+   else if (!strcmp(p, "marquee_ms")) { cfg_ms = atoi(eq); if (cfg_ms < 20) cfg_ms = 20; }
+   else if (!strcmp(p, "pixel_scroll")) { int v = atoi(eq); cfg_px = (v == 1 || v == 2 || v == 4 || v == 6) ? v : 6; }
    else if (!strcmp(p, "save_buttons")) cfg_save = atoi(eq) ? 1 : 0;
    else if (!strcmp(p, "error")) {
     cfg_err = 1;
@@ -296,7 +335,17 @@ static void load_conf(const char *path) {
   } else if (sec == 2 && cur_p >= 0 && !strcmp(p, "bmp_invert")) {
    page_bmp_inv[cur_p] = atoi(eq) ? 1 : 0;
   } else if (sec == 2 && cur_p >= 0 && strncmp(p, "row", 3) == 0 && p[3] >= '0' && p[3] <= '7') {
-   snprintf(pages[cur_p][p[3] - '0'], MAX_TPL, "%s", eq);
+   int ri = p[3] - '0';
+   if (p[4] == 0) {
+    snprintf(pages[cur_p][ri], MAX_TPL, "%s", eq);
+   } else if (!strcmp(p + 4, "_scroll")) {
+    if (!strcmp(eq, "none")) page_scroll[cur_p][ri] = 1;
+    else if (!strcmp(eq, "once")) page_scroll[cur_p][ri] = 2;
+    else if (!strcmp(eq, "pingpong")) page_scroll[cur_p][ri] = 3;
+    else if (!strcmp(eq, "reverse")) page_scroll[cur_p][ri] = 4;
+    else if (!strcmp(eq, "reverse_once")) page_scroll[cur_p][ri] = 5;
+    else page_scroll[cur_p][ri] = 0;
+   }
   }
  }
  fclose(f);
@@ -392,7 +441,10 @@ static void expand_row(const char *tpl, char *out, size_t maxn, int pg, int auto
 
 static int refresh_page_data(int pg, int auto_s) {
  int r, need_marquee = 0; update_net_rates();
- for (r = 0; r < 8; r++) { expand_row(pages[pg][r], rendered[r], MAX_OUT, pg, auto_s); if ((int)strlen(rendered[r]) > 21) need_marquee = 1; }
+ for (r = 0; r < 8; r++) {
+  expand_row(pages[pg][r], rendered[r], MAX_OUT, pg, auto_s);
+  if (row_needs_scroll(pg, r, 0)) need_marquee = 1;
+ }
  return need_marquee;
 }
 
@@ -438,9 +490,44 @@ static void draw_frame(int cur_pg, int tick) {
  int r; memset(fb, 0, sizeof(fb)); draw_bmp_bg(cur_pg);
  for (r = 0; r < 8; r++) {
   int len = (int)strlen(rendered[r]); if (len == 0) continue;
-  if (len <= 21) puts_fb(r, 0, rendered[r]);
-  else { char wrap[MAX_OUT * 2 + 8]; int span = len + 3, off = (tick <= 3) ? 0 : ((tick - 3) % span);
-   snprintf(wrap, sizeof(wrap), "%s   %s", rendered[r], rendered[r]); puts_fb(r, 0, wrap + off); }
+  uint8_t mode = page_scroll[cur_pg][r];
+  if (len <= 21 || mode == 1) { puts_fb_clip(r, 0, 0, 128, rendered[r]); continue; }
+  int pfx_c = 0, pfx_px = row_split_prefix(rendered[r], &pfx_c);
+  if (pfx_c > 0) {
+   char pfx[20]; snprintf(pfx, sizeof(pfx), "%.*s", pfx_c, rendered[r]);
+   puts_fb_clip(r, 0, 0, pfx_px, pfx);
+  }
+  const char *val = rendered[r] + pfx_c;
+  int val_len = len - pfx_c, avail = 128 - pfx_px, val_px = val_len * 6;
+  if (val_px <= avail) { puts_fb_clip(r, pfx_px, pfx_px, 128, val); continue; }
+  int pause = (1200 / cfg_ms) < 2 ? 2 : (1200 / cfg_ms);
+  int step = (cfg_px > 0) ? cfg_px : 6;
+  char wrap[MAX_OUT * 2 + 8];
+  snprintf(wrap, sizeof(wrap), "%s   %s", val, val);
+  int span = (val_len + 3) * 6;
+  int px_off = 0;
+  if (mode == 3) {
+   int max_s = val_px - avail;
+   int move_t = (max_s + step - 1) / step;
+   int cyc = (pause + move_t) * 2;
+   int pos = tick % cyc;
+   if (pos < pause) px_off = 0;
+   else if (pos < pause + move_t) { px_off = (pos - pause) * step; if (px_off > max_s) px_off = max_s; }
+   else if (pos < pause * 2 + move_t) px_off = max_s;
+   else { px_off = max_s - (pos - (pause * 2 + move_t)) * step; if (px_off < 0) px_off = 0; }
+   puts_fb_clip(r, pfx_px - px_off, pfx_px, 128, val);
+   continue;
+  }
+  if (tick <= pause) px_off = 0;
+  else {
+   int adv = (tick - pause) * step;
+   if (mode == 2) px_off = (adv >= span) ? 0 : adv;
+   else if (mode == 4) px_off = (span - (adv % span)) % span;
+   else if (mode == 5) px_off = (adv >= span) ? 0 : ((span - adv) % span);
+   else px_off = adv % span;
+  }
+  int ch_skip = px_off / 6, sub_px = px_off % 6;
+  puts_fb_clip(r, pfx_px - sub_px, pfx_px, 128, wrap + ch_skip);
  } flush_fb();
 }
 
@@ -470,8 +557,22 @@ int main(int argc, char **argv) {
   if (tog_auto) { tog_auto = 0; if (cfg_err) { if (system("/etc/init.d/ix4-lcd reset_default &") < 0) {} } else { cfg_auto = !cfg_auto; save_uci_opt("auto_scroll", cfg_auto); if (cfg_auto) pg = (pg + 1) % num_pages; tick = 0; elapsed_ms = 0; dirty_data = 1; } }
   if (next_bl) { next_bl = 0; if (!err_sleep) { cfg_bl = (cfg_bl + 1) & 3; set_bl_level(cfg_bl); save_uci_opt("backlight", cfg_bl); } }
   if (tog_inv) { tog_inv = 0; if (cfg_err) { err_sleep = !err_sleep; if (err_sleep) { memset(fb, 0, sizeof(fb)); flush_fb(); wr(0, 0xAE); set_bl_level(0); } else { wr(0, 0xAF); set_bl_level(cfg_bl); dirty_data = 1; } } else { cfg_inv = !cfg_inv; wr(0, cfg_inv ? 0xA7 : 0xA6); save_uci_opt("invert", cfg_inv); } }
-  if (!interrupted) { elapsed_ms += step_ms; if (need_mq) tick++; if (elapsed_ms >= cfg_ref * 1000) { elapsed_ms = 0; if (cfg_auto) { pg = (pg + 1) % num_pages; tick = 0; } dirty_data = 1; } }
-  if (dirty_data) need_mq = refresh_page_data(pg, cfg_auto);
+  if (!interrupted) {
+   elapsed_ms += step_ms;
+   if (need_mq) {
+    tick++;
+    int r, still = 0;
+    for (r = 0; r < 8; r++) if (row_needs_scroll(pg, r, tick)) still = 1;
+    need_mq = still;
+   }
+   if (elapsed_ms >= cfg_ref * 1000) { elapsed_ms = 0; if (cfg_auto) { pg = (pg + 1) % num_pages; tick = 0; } dirty_data = 1; }
+  }
+  if (dirty_data) {
+   refresh_page_data(pg, cfg_auto);
+   int r, still = 0;
+   for (r = 0; r < 8; r++) if (row_needs_scroll(pg, r, tick)) still = 1;
+   need_mq = still;
+  }
   if (!err_sleep && (dirty_data || need_mq)) draw_frame(pg, tick);
  }
  memset(fb, 0, sizeof(fb)); flush_fb(); wr(0, 0xAE); set_bl_level(0); return 0;

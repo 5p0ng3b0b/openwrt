@@ -147,8 +147,8 @@ if (pane) {
 var vals = Array.prototype.slice.call(pane.children).filter(function(el) {
 return el.classList && el.classList.contains('cbi-value');
 });
-if (vals.length >= 10) {
-var c0 = vals.at(0), c1 = vals.at(6), c2 = vals.at(8), upItem = vals.at(9);
+if (vals.length >= 11) {
+var c0 = vals.at(0), c1 = vals.at(6), c2 = vals.at(9), upItem = vals.at(10);
 c0.title = _('Start the ix4-lcd daemon at boot to drive the front-panel 128x64 LCD and handle front-panel buttons.');
 c1.title = _('Automatically rotate through all visible display pages using the Refresh Interval.');
 c2.title = _('When enabled, changes made with the physical front-panel LCD buttons (cycle pages, backlight, polarity, active page) are saved to /etc/config/ix4-lcd so they survive reboots.');
@@ -165,7 +165,7 @@ c0, c1, c2, upItem
 ]);
 var midGrid = E('div', { style: 'display:grid; grid-template-columns:repeat(2, minmax(280px, 1fr)); gap:0 28px;' }, [
 E('div', {}, [vals.at(1), vals.at(2), vals.at(3)]),
-E('div', {}, [vals.at(4), vals.at(5), vals.at(7)])
+E('div', {}, [vals.at(4), vals.at(5), vals.at(7), vals.at(8)])
 ]);
 pane.appendChild(topChecks);
 pane.appendChild(midGrid);
@@ -206,7 +206,14 @@ o = s.taboption('settings', form.Flag, 'auto_scroll', _('Cycle Pages'));
 o.default = '0';
 
 o = s.taboption('settings', form.Value, 'marquee_ms', _('Marquee Scroll Step (ms)'));
-o.datatype = 'min(100)'; o.default = '400';
+o.datatype = 'min(40)'; o.default = '400';
+
+o = s.taboption('settings', form.ListValue, 'pixel_scroll', _('Pixel Scroll'));
+o.value('1', _('Ultra Smooth'));
+o.value('2', _('Smooth'));
+o.value('4', _('Medium'));
+o.value('6', _('Fast (char)'));
+o.default = '6';
 
 o = s.taboption('settings', form.Flag, 'save_buttons', _('Persist Button Changes'));
 o.default = '1';
@@ -252,7 +259,10 @@ if (!el) return (fb || '');
 return (el.type === 'checkbox') ? (el.checked ? '1' : '0') : (el.value || '');
 };
 var obj = { bmp: getVal('bmp', sec.bmp), bmp_invert: getVal('bmp_invert', sec.bmp_invert) };
-for (var r = 0; r < 8; r++) obj['row' + r] = getVal('row' + r, sec['row' + r]);
+for (var r = 0; r < 8; r++) {
+obj['row' + r] = getVal('row' + r, sec['row' + r]);
+obj['row' + r + '_scroll'] = getVal('row' + r + '_scroll', sec['row' + r + '_scroll'] || 'normal') || 'normal';
+}
 return obj;
 });
 }
@@ -300,7 +310,6 @@ pageSel.appendChild(E('option', { value: String(i) }, _('Page %d / %d').format(i
 var showPg = (curPg < pages.length) ? curPg : 0;
 pageSel.value = String(showPg);
 var pg = pages[showPg];
-
 var invEl = document.querySelector('[name="cbid.ix4-lcd.general.invert"]');
 var blEl = document.querySelector('[name="cbid.ix4-lcd.general.backlight"]');
 var inv = (invEl ? invEl.value : (uci.get('ix4-lcd', 'general', 'invert') || '1')) === '1';
@@ -308,10 +317,8 @@ var bl = parseInt(blEl ? blEl.value : (uci.get('ix4-lcd', 'general', 'backlight'
 var bgColors = ['#18222a', '#355c7d', '#5c9cd6', '#7ec8ff'];
 var bg = inv ? bgColors[bl & 3] : '#0b192c';
 var fg = inv ? '#0b192c' : (bl === 0 ? '#2b3e50' : '#8ce0ff');
-
 var ctx = canvas.getContext('2d');
 ctx.fillStyle = bg; ctx.fillRect(0, 0, 384, 192); ctx.fillStyle = fg;
-
 if (pg.bmp) {
 var bname = pg.bmp.indexOf('/') === 0 ? pg.bmp : '/etc/ix4-lcd/' + pg.bmp;
 if (!(bname in bmpCache)) {
@@ -336,38 +343,73 @@ if (ink) ctx.fillRect(x * 3, y * 3, 3, 3);
 }
 }
 }
-
-for (var r = 0; r < 8; r++) {
-var txt = expandSample(pg['row' + r] || '', showPg, pages.length);
-if (!txt) continue;
-var disp = txt;
-if (txt.length > 21) {
-var span = txt.length + 3;
-var off = (tick <= 3) ? 0 : ((tick - 3) % span);
-disp = (txt + '   ' + txt).slice(off, off + 21);
-}
-var col = 0;
-for (var i = 0; i < disp.length && col <= 122; i++) {
-var code = disp.charCodeAt(i);
-var glyph = (code >= 32 && code <= 122) ? FONT5X7[code - 32] : FONT5X7[0];
-ctx.fillStyle = bg; ctx.fillRect(col * 3, r * 24, 18, 24); ctx.fillStyle = fg;
+var msEl = document.querySelector('[name="cbid.ix4-lcd.general.marquee_ms"]');
+var pxEl = document.querySelector('[name="cbid.ix4-lcd.general.pixel_scroll"]');
+var stepMs = Math.max(40, parseInt(msEl ? msEl.value : (uci.get('ix4-lcd', 'general', 'marquee_ms') || '400'), 10) || 400);
+var pxStep = parseInt(pxEl ? pxEl.value : (uci.get('ix4-lcd', 'general', 'pixel_scroll') || '6'), 10) || 6;
+if (pxStep !== 1 && pxStep !== 2 && pxStep !== 4 && pxStep !== 6) pxStep = 6;
+var pauseTicks = Math.max(2, Math.round(1200 / stepMs));
+var drawClip = function(rowIdx, text, xStart, xClip0, xClip1) {
+var col = xStart;
+for (var i = 0; i < text.length; i++) {
+if (col >= xClip1) break;
+if (col + 6 > xClip0) {
+var code = text.charCodeAt(i);
+var glyph = (code >= 32 && code <= 122) ? FONT5X7.at(code - 32) : FONT5X7.at(0);
 for (var c = 0; c < 5; c++) {
-var bits = glyph[c];
+var px = col + c;
+if (px < xClip0 || px >= xClip1) continue;
+var bits = glyph.at(c);
 for (var b = 0; b < 7; b++) {
-if ((bits >> b) & 1) ctx.fillRect((col + c) * 3, (r * 8 + b) * 3, 3, 3);
+if ((bits >> b) & 1) ctx.fillRect(px * 3, (rowIdx * 8 + b) * 3, 3, 3);
+}
 }
 }
 col += 6;
 }
+};
+for (var r = 0; r < 8; r++) {
+var txt = expandSample(pg['row' + r] || '', showPg, pages.length);
+if (!txt) continue;
+var sc = pg['row' + r + '_scroll'] || 'normal';
+if (txt.length * 6 <= 128 || sc === 'none') {
+ctx.fillStyle = bg; ctx.fillRect(0, r * 24, 384, 24); ctx.fillStyle = fg;
+drawClip(r, txt, 0, 0, 128); continue;
 }
-infoSpan.textContent = _('128x64 px (3x zoom) | Polarity: %s | Backlight: %d/3').format(inv ? 'Positive' : 'Negative', bl);
+var splitIdx = txt.indexOf(': '), pfx = '', body = txt, viewX = 0;
+if (splitIdx > 0 && (splitIdx + 2) * 6 <= 78) { pfx = txt.slice(0, splitIdx + 2); body = txt.slice(splitIdx + 2); viewX = pfx.length * 6; }
+var viewW = 128 - viewX, bodyPx = body.length * 6;
+if (bodyPx <= viewW) {
+ctx.fillStyle = bg; ctx.fillRect(0, r * 24, 384, 24); ctx.fillStyle = fg;
+drawClip(r, txt, 0, 0, 128); continue;
 }
-
+var spanPx = bodyPx + 18, maxOff = bodyPx - viewW, offPx = 0, wrapMode = false;
+if (sc === 'normal') { wrapMode = true; offPx = (tick <= pauseTicks) ? 0 : (((tick - pauseTicks) * pxStep) % spanPx); }
+else if (sc === 'reverse') { wrapMode = true; var mv = (tick <= pauseTicks) ? 0 : (((tick - pauseTicks) * pxStep) % spanPx); offPx = (spanPx - mv) % spanPx; }
+else if (sc === 'once') { if (tick > pauseTicks) { var mv = (tick - pauseTicks) * pxStep; offPx = (mv < spanPx) ? mv : 0; } }
+else if (sc === 'reverse_once') { if (tick > pauseTicks) { var mv = (tick - pauseTicks) * pxStep; offPx = (mv < spanPx) ? (spanPx - mv) : 0; } }
+else if (sc === 'pingpong') {
+var tr = Math.max(1, Math.ceil(maxOff / pxStep)), cyc = pauseTicks * 2 + tr * 2, pos = tick % cyc;
+if (pos < pauseTicks) offPx = 0;
+else if (pos < pauseTicks + tr) offPx = Math.min(maxOff, (pos - pauseTicks) * pxStep);
+else if (pos < pauseTicks * 2 + tr) offPx = maxOff;
+else offPx = Math.max(0, maxOff - (pos - pauseTicks * 2 - tr) * pxStep);
+}
+ctx.fillStyle = bg; ctx.fillRect(0, r * 24, 384, 24); ctx.fillStyle = fg;
+if (pfx) drawClip(r, pfx, 0, 0, viewX);
+drawClip(r, wrapMode ? (body + '   ' + body) : body, viewX - offPx, viewX, 128);
+}
+infoSpan.textContent = _('128x64 px (3x zoom) | Polarity: %s | Backlight: %d/3 | Step: %dms / %dpx').format(inv ? 'Positive' : 'Negative', bl, stepMs, pxStep);
+}
 pageSel.addEventListener('change', function() { curPg = parseInt(pageSel.value, 10) || 0; tick = 0; draw(); });
 prevBtn.addEventListener('click', function() { var n = getPages().length; curPg = (curPg + n - 1) % n; tick = 0; draw(); });
 nextBtn.addEventListener('click', function() { var n = getPages().length; curPg = (curPg + 1) % n; tick = 0; draw(); });
 draw();
-setInterval(function() { if (document.body.contains(canvas)) { tick++; draw(); } }, 450);
+(function scheduleTick() {
+var msEl = document.querySelector('[name="cbid.ix4-lcd.general.marquee_ms"]');
+var delay = Math.max(40, parseInt(msEl ? msEl.value : (uci.get('ix4-lcd', 'general', 'marquee_ms') || '400'), 10) || 400);
+setTimeout(function() { if (document.body.contains(canvas)) { tick++; draw(); scheduleTick(); } }, delay);
+})();
 
 var bezelWrap = E('div', {
 style: 'position:relative; width:820px; height:314px; margin:10px auto; border-radius:14px; box-shadow:0 6px 20px rgba(0,0,0,0.45); flex-shrink:0;'
@@ -538,23 +580,30 @@ delBars.push(prev);
 var vals = Array.prototype.slice.call(node.children).filter(function(el) {
 return el.classList && el.classList.contains('cbi-value');
 });
-if (vals.length >= 10) {
-vals.forEach(function(v) {
-v.style.display = 'flex';
-v.style.alignItems = 'center';
-v.style.marginBottom = '6px';
-var lbl = v.querySelector('.cbi-value-title');
-var fld = v.querySelector('.cbi-value-field');
-if (lbl) { lbl.style.width = '145px'; lbl.style.minWidth = '145px'; lbl.style.textAlign = 'left'; lbl.style.paddingRight = '8px'; }
+if (vals.length >= 19) {
+vals.slice(0, 3).forEach(function(v) {
+v.style.display = 'flex'; v.style.alignItems = 'center'; v.style.marginBottom = '6px';
+var lbl = v.querySelector('.cbi-value-title'), fld = v.querySelector('.cbi-value-field');
+if (lbl) { lbl.style.width = '120px'; lbl.style.minWidth = '120px'; lbl.style.textAlign = 'left'; lbl.style.paddingRight = '8px'; }
 if (fld) { fld.style.flex = '1'; fld.style.marginLeft = '0'; }
 });
-var topRow = E('div', { style: 'display:grid; grid-template-columns:2fr 1fr 1fr; gap:0 16px;' }, [ vals[0], vals[1], vals[2] ]);
-var rowsGrid = E('div', { style: 'display:grid; grid-template-columns:1fr 1fr; gap:0 24px;' }, [
-E('div', {}, vals.slice(3, 7)),
-E('div', {}, vals.slice(7, 11))
-]);
+var topRow = E('div', { style: 'display:grid; grid-template-columns:2fr 1fr 1fr; gap:0 16px;' }, [ vals.at(0), vals.at(1), vals.at(2) ]);
+var leftCol = [], rightCol = [];
+for (var ri = 0; ri < 8; ri++) {
+var rv = vals.at(3 + ri * 2), sv = vals.at(4 + ri * 2);
+rv.style.cssText = 'display:flex; align-items:center; flex:1; min-width:0; margin:0;';
+var rLbl = rv.querySelector('.cbi-value-title'), rFld = rv.querySelector('.cbi-value-field');
+if (rLbl) rLbl.style.cssText = 'width:54px; min-width:54px; text-align:left; padding-right:6px; margin:0;';
+if (rFld) rFld.style.cssText = 'flex:1; min-width:0; margin:0;';
+sv.style.cssText = 'display:flex; align-items:center; flex:0 0 122px; width:122px; margin:0;';
+var sLbl = sv.querySelector('.cbi-value-title'), sFld = sv.querySelector('.cbi-value-field');
+if (sLbl) sLbl.style.display = 'none';
+if (sFld) { sFld.style.cssText = 'width:100%; margin:0;'; var sSel = sFld.querySelector('select'); if (sSel) { sSel.style.width = '100%'; sSel.title = _('Row %d scroll style').format(ri); } }
+var pair = E('div', { style: 'display:flex; align-items:center; gap:6px; margin-bottom:6px;' }, [ rv, sv ]);
+if (ri < 4) leftCol.push(pair); else rightCol.push(pair);
+}
 node.appendChild(topRow);
-node.appendChild(rowsGrid);
+node.appendChild(E('div', { style: 'display:grid; grid-template-columns:1fr 1fr; gap:0 24px;' }, [ E('div', {}, leftCol), E('div', {}, rightCol) ]));
 }
 var a = E('a', { href: '#' }, _('Page %d').format(idx + 1));
 a.addEventListener('click', function(ev) { ev.preventDefault(); selectPageTab(idx, true); });
@@ -611,6 +660,10 @@ for (var r = 0; r < 8; r++) {
 o = p.option(form.Value, 'row' + r, _('Row %d').format(r));
 o.optional = true;
 o.placeholder = (r === 0) ? '{hostname} {page}{auto}' : '';
+o = p.option(form.ListValue, 'row' + r + '_scroll', _('Scroll'));
+o.value('normal', _('Normal')); o.value('none', _('None')); o.value('once', _('Once'));
+o.value('pingpong', _('Ping Pong')); o.value('reverse', _('Reverse')); o.value('reverse_once', _('Reverse Once'));
+o.default = 'normal';
 }
 
 /* ---- Custom Tokens Section ---- */
