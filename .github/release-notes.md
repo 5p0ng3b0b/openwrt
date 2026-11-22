@@ -44,7 +44,7 @@ go 0x00800000
 Verify you reach the `ix4-300d>` prompt (`U-Boot 2026.10`) with `NAND: 1024 MiB`.
 
 #### 3. Flash New U-Boot Permanently to NAND (`0x0`)
-Once RAM testing succeeds, reboot back to `Marvell>>` and flash `u-boot-with-spl.kwb` (which includes the 2048-byte Marvell BootROM NAND header + SPL + U-Boot) to `0x0`:
+Once RAM testing succeeds, place `u-boot-with-spl.kwb` (which includes the 2048-byte Marvell BootROM NAND header + SPL + U-Boot) on your TFTP server (`192.168.1.100`), reboot back to `Marvell>>`, and flash it to `0x0`: 
 ```text
 tftpboot 0x02000000 u-boot-with-spl.kwb
 nand erase 0x0 0xe0000
