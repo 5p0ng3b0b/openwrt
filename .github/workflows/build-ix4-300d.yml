@@ -68,6 +68,8 @@ jobs:
           find bin/targets/mvebu/cortexa9/ -maxdepth 2 -type f \
             \( -name "*.img" -o -name "*.bin" -o -name "*.kwb" -o -name "*.manifest" \) \
             -exec cp -v {} release-files/ \;
+          find bin/packages/ -type f \( -name "*ix4-lcd*.apk" -o -name "*ix4-lcd*.ipk" \) \
+            -exec cp -v {} release-files/ \;
           (cd release-files && sha256sum * > SHA256SUMS)
           ls -lh release-files/
 
