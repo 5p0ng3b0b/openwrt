@@ -1,0 +1,29 @@
+#!/bin/sh
+HOLD="/tmp/ix4-btn0.hold"
+LONG="/tmp/ix4-btn0.long"
+
+case "$ACTION" in
+pressed)
+rm -f "$LONG"
+(
+sleep 2
+if [ -f "$HOLD" ]; then
+touch "$LONG"
+rm -f "$HOLD"
+killall -ALRM ix4-lcd 2>/dev/null
+fi
+) &
+echo $! > "$HOLD"
+;;
+released)
+if [ -f "$HOLD" ]; then
+kill "$(cat "$HOLD")" 2>/dev/null
+rm -f "$HOLD"
+fi
+if [ -f "$LONG" ]; then
+rm -f "$LONG"
+else
+killall -USR1 ix4-lcd 2>/dev/null
+fi
+;;
+esac

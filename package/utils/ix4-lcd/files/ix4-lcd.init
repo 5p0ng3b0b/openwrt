@@ -1,0 +1,91 @@
+#!/bin/sh /etc/rc.common
+
+START=95
+STOP=10
+USE_PROCD=1
+
+CONF_RUN="/var/run/ix4-lcd.conf"
+
+emit_token() {
+local cfg="$1" name file cmd div
+config_get name "$cfg" name
+[ -n "$name" ] || return 0
+config_get file "$cfg" file
+config_get cmd "$cfg" cmd
+config_get div "$cfg" div 0
+	config_get ttl "$cfg" ttl 0
+echo "[token]" >> "$CONF_RUN"
+printf 'name=%s\n' "$name" >> "$CONF_RUN"
+[ -n "$file" ] && printf 'file=%s\n' "$file" >> "$CONF_RUN"
+[ -n "$cmd" ] && printf 'cmd=%s\n' "$cmd" >> "$CONF_RUN"
+[ "$div" -gt 0 ] 2>/dev/null && printf 'div=%d\n' "$div" >> "$CONF_RUN"
+	[ "$ttl" -gt 0 ] 2>/dev/null && printf 'ttl=%d\n' "$ttl" >> "$CONF_RUN"
+}
+
+emit_page() {
+local cfg="$1" i val bmp bmp_b64 bmp_inv
+echo "[page]" >> "$CONF_RUN"
+config_get bmp "$cfg" bmp
+config_get bmp_b64 "$cfg" bmp_b64
+config_get_bool bmp_inv "$cfg" bmp_invert 0
+[ -n "$bmp" ] && printf 'bmp=%s\n' "$bmp" >> "$CONF_RUN"
+[ -n "$bmp_b64" ] && printf 'bmp_b64=%s\n' "$bmp_b64" >> "$CONF_RUN"
+[ "$bmp_inv" -eq 1 ] && printf 'bmp_invert=1\n' >> "$CONF_RUN"
+for i in 0 1 2 3 4 5 6 7; do
+config_get val "$cfg" "row$i"
+[ -n "$val" ] && printf 'row%d=%s\n' "$i" "$val" >> "$CONF_RUN"
+done
+}
+
+extra_command "reset_default" "Restore default /etc/config/ix4-lcd"
+
+reset_default() {
+if [ -f /rom/etc/config/ix4-lcd ]; then
+cp -f /rom/etc/config/ix4-lcd /etc/config/ix4-lcd
+else
+rm -f /etc/config/ix4-lcd
+fi
+reload_service
+}
+
+start_service() {
+local enabled default_page backlight invert contrast refresh auto_scroll marquee_ms save_buttons uci_err
+if [ -f /etc/config/ix4-lcd ]; then
+uci_err=$(uci show ix4-lcd 2>&1 >/dev/null | head -n 1)
+if [ -n "$uci_err" ]; then
+logger -t ix4-lcd "Config parse error: $uci_err"
+: > "$CONF_RUN"
+printf 'backlight=3\ninvert=1\ncontrast=38\nrefresh=5\nauto_scroll=0\nmarquee_ms=350\nsave_buttons=0\nerror=%s\n' "$uci_err" >> "$CONF_RUN"
+procd_open_instance
+procd_set_param command /usr/sbin/ix4-lcd -c "$CONF_RUN"
+procd_set_param file /etc/config/ix4-lcd
+procd_set_param respawn
+procd_close_instance
+return 0
+fi
+fi
+config_load ix4-lcd
+config_get_bool enabled general enabled 1
+	config_get default_page general default_page 0
+[ "$enabled" -eq 1 ] || return 0
+config_get backlight general backlight 3
+config_get_bool invert general invert 1
+config_get contrast general contrast 38
+config_get refresh general refresh 5
+config_get_bool auto_scroll general auto_scroll 0
+config_get marquee_ms general marquee_ms 400
+config_get_bool save_buttons general save_buttons 1
+: > "$CONF_RUN"
+printf 'default_page=%d\nbacklight=%d\ninvert=%d\ncontrast=%d\nrefresh=%d\nauto_scroll=%d\nmarquee_ms=%d\nsave_buttons=%d\n' \
+"$default_page" "$backlight" "$invert" "$contrast" "$refresh" "$auto_scroll" "$marquee_ms" "$save_buttons" >> "$CONF_RUN"
+config_foreach emit_token token
+config_foreach emit_page page
+procd_open_instance
+procd_set_param command /usr/sbin/ix4-lcd -c "$CONF_RUN"
+procd_set_param file /etc/config/ix4-lcd
+procd_set_param respawn
+procd_close_instance
+}
+
+reload_service() { stop; start; }
+service_triggers() { procd_add_reload_trigger "ix4-lcd"; }
