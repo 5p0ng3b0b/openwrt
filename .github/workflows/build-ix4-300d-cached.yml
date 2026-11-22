@@ -73,6 +73,7 @@ jobs:
       - name: Collect release files and generate SHA256SUMS
         run: |
           mkdir -p release-files
+          find build_dir/ -path '*u-boot-ix4-300d*/u-boot.bin' -exec cp -v {} release-files/ \;
           find bin/targets/mvebu/cortexa9/ -maxdepth 2 -type f \
             \( -name "*.img" -o -name "*.bin" -o -name "*.kwb" -o -name "*.manifest" \) \
             -exec cp -v {} release-files/ \;
