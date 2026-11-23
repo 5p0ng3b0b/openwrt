@@ -821,7 +821,13 @@ return E('div', {
 }, [
 E('div', { 'style': 'display:flex; align-items:center; gap:10px;' }, [
 E('strong', {}, _('Target Disk:')), sel,
-E('button', { 'class': 'btn', 'click': function() { self.refreshAll(); } }, _('Refresh'))
+E('button', { 'class': 'btn', 'click': function() { self.refreshAll(); } }, _('Refresh')),
+(this.activeTab === 'info' && this.smartInfo && !this.smartInfo.installed) ? E('button', {
+'class': 'btn cbi-button-action',
+'click': function() {
+self.runWithProgress(_('Installing S.M.A.R.T. Tools'), callPkgAct('add', 'smartmontools'), function() { self.refreshAll(); });
+}
+}, _('Install smartmontools')) : ''
 ]),
 E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:12px; font-size:12px;' }, [
 E('span', {}, [ E('strong', {}, _('Table: ')), tblLabel ]),
