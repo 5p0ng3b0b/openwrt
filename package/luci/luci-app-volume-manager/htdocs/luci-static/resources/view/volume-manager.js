@@ -10,7 +10,7 @@ var callInfo = rpc.declare({ object: 'volmgr', method: 'info', params: ['disk'],
 var callSmart = rpc.declare({ object: 'volmgr', method: 'smart', params: ['disk'], expect: {} });
 var callPackages = rpc.declare({ object: 'volmgr', method: 'packages', expect: {} });
 var callJobStatus = rpc.declare({ object: 'volmgr', method: 'job_status', expect: {} });
-var callCreatePart = rpc.declare({ object: 'volmgr', method: 'create_part', params: ['disk', 'layout', 'ptype', 'fstype', 'size', 'label', 'role'], expect: {} });
+var callCreatePart = rpc.declare({ object: 'volmgr', method: 'create_part', params: ['disk', 'layout', 'ptype', 'fstype', 'size', 'label', 'role', 'offset_mib'], expect: {} });
 var callFormatPart = rpc.declare({ object: 'volmgr', method: 'format_part', params: ['part', 'fstype', 'label'], expect: {} });
 var callResizePart = rpc.declare({ object: 'volmgr', method: 'resize_part', params: ['disk', 'num', 'size', 'fstype'], expect: {} });
 var callDeletePart = rpc.declare({ object: 'volmgr', method: 'delete_part', params: ['disk', 'num'], expect: {} });
@@ -193,77 +193,193 @@ self.renderMain();
 },
 
 openCreateModal: function(diskObj, seg, existingLayout) {
-var self = this;
-var maxMiB = Math.max(1, Math.floor((Number(seg.size) || 0) / (1024 * 1024)));
-var layoutSel = E('select', { 'class': 'cbi-input-select', 'disabled': existingLayout ? true : null },
-existingLayout ? [
-E('option', { 'value': existingLayout }, existingLayout === 'gpt' ? 'GPT (Locked - existing table)' : 'MBR (Locked - existing table)')
-] : [
-E('option', { 'value': 'gpt' }, 'GPT (GUID Partition Table)'),
-E('option', { 'value': 'mbr' }, 'MBR (Master Boot Record)')
-]
-);
+        var self = this;
+        var maxMiB = Math.max(1, Math.floor((Number(seg.size) || 0) / (1024 * 1024)));
+        var preMiB = 0;
+        var sizeMiB = maxMiB;
 
-var ptypeSel = E('select', { 'class': 'cbi-input-select' }, [ E('option', { 'value': 'primary' }, _('Primary')) ]);
-var syncPtype = function() {
-ptypeSel.innerHTML = '';
-ptypeSel.appendChild(E('option', { 'value': 'primary' }, _('Primary')));
-if (layoutSel.value === 'mbr') {
-ptypeSel.appendChild(E('option', { 'value': 'extended' }, _('Extended')));
-ptypeSel.disabled = false;
-} else {
-ptypeSel.disabled = true;
-}
-};
-layoutSel.addEventListener('change', syncPtype);
-syncPtype();
+        var layoutSel = E('select', { 'class': 'cbi-input-select', 'disabled': existingLayout ? true : null },
+            existingLayout ? [
+                E('option', { 'value': existingLayout }, existingLayout === 'gpt' ? 'GPT (Locked - existing table)' : 'MBR (Locked - existing table)')
+            ] : [
+                E('option', { 'value': 'gpt' }, 'GPT (GUID Partition Table)'),
+                E('option', { 'value': 'mbr' }, 'MBR (Master Boot Record)')
+            ]
+        );
 
-var fsSel = this.buildFsSelect(true);
+        var ptypeSel = E('select', { 'class': 'cbi-input-select' }, [ E('option', { 'value': 'primary' }, _('Primary')) ]);
+        var syncPtype = function() {
+            ptypeSel.innerHTML = '';
+            ptypeSel.appendChild(E('option', { 'value': 'primary' }, _('Primary')));
+            if (layoutSel.value === 'mbr') {
+                ptypeSel.appendChild(E('option', { 'value': 'extended' }, _('Extended')));
+                ptypeSel.disabled = false;
+            } else {
+                ptypeSel.disabled = true;
+            }
+        };
+        layoutSel.addEventListener('change', syncPtype);
+        syncPtype();
+
+        var fsSel = this.buildFsSelect(true);
         var roleSel = E('select', { 'class': 'cbi-input-select' }, [
-E('option', { 'value': 'linux' }, 'Linux Filesystem (0FC63DAF / 0x83)'),
-E('option', { 'value': 'raid' }, 'Linux RAID Member (A19D880F / 0xFD)'),
-E('option', { 'value': 'lvm' }, 'Linux LVM PV (E6D6D379 / 0x8E)'),
-E('option', { 'value': 'swap' }, 'Linux Swap (0657FD6D / 0x82)'),
-E('option', { 'value': 'msftdata' }, 'Microsoft Basic Data (EBD0A0A2 / 0x07)'),
-E('option', { 'value': 'esp' }, 'EFI System Partition (C12A7328 / 0xEF)'),
-E('option', { 'value': 'diag' }, 'Windows Recovery (DE94BBA4 / 0x27)')
-]);
+            E('option', { 'value': 'linux' }, 'Linux Filesystem (0FC63DAF / 0x83)'),
+            E('option', { 'value': 'raid' }, 'Linux RAID Member (A19D880F / 0xFD)'),
+            E('option', { 'value': 'lvm' }, 'Linux LVM PV (E6D6D379 / 0x8E)'),
+            E('option', { 'value': 'swap' }, 'Linux Swap (0657FD6D / 0x82)'),
+            E('option', { 'value': 'msftdata' }, 'Microsoft Basic Data (EBD0A0A2 / 0x07)'),
+            E('option', { 'value': 'esp' }, 'EFI System Partition (C12A7328 / 0xEF)'),
+            E('option', { 'value': 'diag' }, 'Windows Recovery (DE94BBA4 / 0x27)')
+        ]);
+        fsSel.addEventListener('change', function() {
+            var v = fsSel.value;
+            if (v === 'swap') roleSel.value = 'swap';
+            else if (v === 'ntfs' || v === 'exfat' || v === 'vfat') roleSel.value = 'msftdata';
+            else roleSel.value = 'linux';
+            updatePreview();
+        });
 
-fsSel.addEventListener('change', function() {
-var v = fsSel.value;
-if (v === 'swap') roleSel.value = 'swap';
-else if (v === 'ntfs' || v === 'exfat' || v === 'vfat') roleSel.value = 'msftdata';
-else roleSel.value = 'linux';
-});
+        var hatchBg = 'repeating-linear-gradient(45deg, rgba(128,128,128,0.14), rgba(128,128,128,0.14) 8px, rgba(128,128,128,0.24) 8px, rgba(128,128,128,0.24) 16px)';
+        var segPre = E('div', { 'style': 'height:100%; background:' + hatchBg + '; transition:flex 0.15s;' });
+        var segNew = E('div', { 'style': 'height:100%; background:#2e7d32; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; overflow:hidden; white-space:nowrap; transition:flex 0.15s;' });
+        var segPost = E('div', { 'style': 'height:100%; background:' + hatchBg + '; transition:flex 0.15s;' });
+        var previewBar = E('div', {
+            'style': 'display:flex; width:100%; height:42px; border-radius:6px; overflow:hidden; border:1px solid rgba(128,128,128,0.4); margin-bottom:12px; background:rgba(0,0,0,0.2);'
+        }, [ segPre, segNew, segPost ]);
+        var preSlider = E('input', { 'type': 'range', 'min': '0', 'max': String(Math.max(0, maxMiB - 1)), 'value': '0', 'style': 'width:100%;' });
+        var preNumIn = E('input', { 'type': 'number', 'class': 'cbi-input-text', 'min': '0', 'step': 'any', 'value': '0', 'style': 'width:130px;' });
+        var preUnitSel = E('select', { 'class': 'cbi-input-select', 'style': 'width:95px;' }, [
+            E('option', { 'value': 'MiB', 'selected': 'selected' }, 'MiB'),
+            E('option', { 'value': 'GiB' }, 'GiB'),
+            E('option', { 'value': 'TiB' }, 'TiB'),
+            E('option', { 'value': 'pct' }, '%')
+        ]);
+        var sizeSlider = E('input', { 'type': 'range', 'min': '1', 'max': String(maxMiB), 'value': String(maxMiB), 'style': 'width:100%;' });
+        var numIn = E('input', { 'type': 'number', 'class': 'cbi-input-text', 'min': '1', 'step': 'any', 'value': String((maxMiB / 1024).toFixed(2)), 'style': 'width:130px;', 'disabled': true });
+        var unitSel = E('select', { 'class': 'cbi-input-select', 'style': 'width:95px;' }, [
+            E('option', { 'value': 'max', 'selected': 'selected' }, 'Max'),
+            E('option', { 'value': 'GiB' }, 'GiB'),
+            E('option', { 'value': 'MiB' }, 'MiB'),
+            E('option', { 'value': 'TiB' }, 'TiB'),
+            E('option', { 'value': 'pct' }, '%')
+        ]);
+        var postLabel = E('span', { 'style': 'font-size:12px; opacity:0.85;' }, '0 MiB');
 
-var sizeInput = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': 'max', 'placeholder': 'max or e.g. 50G / 512M' });
-var labelInput = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'placeholder': _('Optional volume label') });
+        var syncPreFromMiB = function() {
+            var u = preUnitSel.value;
+            if (u === 'GiB') preNumIn.value = (preMiB / 1024).toFixed(2);
+            else if (u === 'TiB') preNumIn.value = (preMiB / 1048576).toFixed(3);
+            else if (u === 'pct') preNumIn.value = Math.round((preMiB / maxMiB) * 100);
+            else preNumIn.value = Math.round(preMiB);
+        };
 
-ui.showModal(_('Create Partition on %s').format('/dev/' + diskObj.name), [
-E('div', { 'class': 'cbi-section' }, [
-E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Layout')), E('div', { 'class': 'cbi-value-field' }, [ layoutSel ]) ]),
-E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Type')), E('div', { 'class': 'cbi-value-field' }, [ ptypeSel ]) ]),
-E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Filesystem')), E('div', { 'class': 'cbi-value-field' }, [ fsSel ]) ]),
-E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Type ID')), E('div', { 'class': 'cbi-value-field' }, [ roleSel ]) ]),
-E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Size (max %d MiB)').format(maxMiB)), E('div', { 'class': 'cbi-value-field' }, [ sizeInput ]) ]),
-E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Label')), E('div', { 'class': 'cbi-value-field' }, [ labelInput ]) ])
-]),
-E('div', { 'class': 'right' }, [
-E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')), ' ',
-E('button', {
-'class': 'btn cbi-button-apply important',
-'click': function() {
-self.runWithProgress(_('Creating Partition'),
-callCreatePart('/dev/' + diskObj.name, layoutSel.value, ptypeSel.value, fsSel.value, sizeInput.value.trim() || 'max', labelInput.value.trim(), roleSel.value),
-function() { self.refreshAll(); }
-);
-}
-}, _('Create'))
-])
-]);
-},
+        var syncNumFromMiB = function() {
+            var u = unitSel.value;
+            numIn.disabled = (u === 'max');
+            if (u === 'max') numIn.value = ((maxMiB - preMiB) / 1024).toFixed(2);
+            else if (u === 'GiB') numIn.value = (sizeMiB / 1024).toFixed(2);
+            else if (u === 'TiB') numIn.value = (sizeMiB / 1048576).toFixed(3);
+            else if (u === 'pct') numIn.value = Math.round((sizeMiB / maxMiB) * 100);
+            else numIn.value = Math.round(sizeMiB);
+        };
 
-openFormatModal: function(seg) {
+        var updatePreview = function() {
+            preMiB = Math.max(0, Math.min(maxMiB - 1, Math.round(preMiB)));
+            sizeMiB = Math.max(1, Math.min(maxMiB - preMiB, Math.round(sizeMiB)));
+            var postMiB = Math.max(0, maxMiB - preMiB - sizeMiB);
+            preSlider.max = String(Math.max(0, maxMiB - 1));
+            preSlider.value = String(preMiB);
+            sizeSlider.max = String(Math.max(1, maxMiB - preMiB));
+            sizeSlider.value = String(sizeMiB);
+            segPre.style.flex = preMiB + ' 1 0';
+            segNew.style.flex = sizeMiB + ' 1 0';
+            segPost.style.flex = postMiB + ' 1 0';
+            segNew.style.background = FS_COLORS[fsSel.value] || '#455a64';
+            segNew.textContent = (sizeMiB >= 1024 ? (sizeMiB / 1024).toFixed(1) + ' GiB' : sizeMiB + ' MiB');
+            postLabel.textContent = postMiB + ' MiB (' + (postMiB / 1024).toFixed(2) + ' GiB)';
+        };
+
+        var applyPreChange = function() {
+            if (unitSel.value === 'max') sizeMiB = maxMiB - preMiB;
+            else if (preMiB + sizeMiB > maxMiB) sizeMiB = maxMiB - preMiB;
+            syncNumFromMiB();
+            updatePreview();
+        };
+
+        preSlider.addEventListener('input', function() {
+            preMiB = Number(preSlider.value) || 0;
+            syncPreFromMiB();
+            applyPreChange();
+        });
+        preUnitSel.addEventListener('change', function() { syncPreFromMiB(); });
+        preNumIn.addEventListener('input', function() {
+            var v = parseFloat(preNumIn.value) || 0;
+            var u = preUnitSel.value;
+            if (u === 'GiB') preMiB = v * 1024;
+            else if (u === 'TiB') preMiB = v * 1048576;
+            else if (u === 'pct') preMiB = (v / 100) * maxMiB;
+            else preMiB = v;
+            applyPreChange();
+        });
+        sizeSlider.addEventListener('input', function() {
+            if (unitSel.value === 'max') unitSel.value = 'GiB';
+            sizeMiB = Number(sizeSlider.value) || 1;
+            syncNumFromMiB();
+            updatePreview();
+        });
+        unitSel.addEventListener('change', function() {
+            if (unitSel.value === 'max') sizeMiB = maxMiB - preMiB;
+            syncNumFromMiB();
+            updatePreview();
+        });
+        numIn.addEventListener('input', function() {
+            var v = parseFloat(numIn.value) || 0;
+            var u = unitSel.value;
+            if (u === 'GiB') sizeMiB = v * 1024;
+            else if (u === 'TiB') sizeMiB = v * 1048576;
+            else if (u === 'pct') sizeMiB = (v / 100) * maxMiB;
+            else sizeMiB = v;
+            updatePreview();
+        });
+        updatePreview();
+
+        var labelInput = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'placeholder': _('Optional volume label') });
+
+        ui.showModal(_('Create Partition on %s').format('/dev/' + diskObj.name), [
+            previewBar,
+            E('div', { 'class': 'cbi-section' }, [
+                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Layout')), E('div', { 'class': 'cbi-value-field' }, [ layoutSel ]) ]),
+                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Type')), E('div', { 'class': 'cbi-value-field' }, [ ptypeSel ]) ]),
+                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Filesystem')), E('div', { 'class': 'cbi-value-field' }, [ fsSel ]) ]),
+                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Type ID')), E('div', { 'class': 'cbi-value-field' }, [ roleSel ]) ]),
+                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Free Space Preceding')), E('div', { 'class': 'cbi-value-field' }, [ preSlider, E('div', { 'style': 'display:flex; gap:8px; align-items:center; margin-top:6px;' }, [ preNumIn, preUnitSel ]) ]) ]),
+                E('div', { 'class': 'cbi-value' }, [
+                    E('label', { 'class': 'cbi-value-title' }, _('New Size (max %d MiB)').format(maxMiB)),
+                    E('div', { 'class': 'cbi-value-field' }, [
+                        sizeSlider,
+                        E('div', { 'style': 'display:flex; gap:8px; align-items:center; margin-top:6px;' }, [ numIn, unitSel ])
+                    ])
+                ]),
+                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Free Space Following')), E('div', { 'class': 'cbi-value-field' }, [ postLabel ]) ]),
+                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Label')), E('div', { 'class': 'cbi-value-field' }, [ labelInput ]) ])
+            ]),
+            E('div', { 'class': 'right' }, [
+                E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')), ' ',
+                E('button', {
+                    'class': 'btn cbi-button-apply important',
+                    'click': function() {
+                        var szArg = (unitSel.value === 'max') ? 'max' : (Math.round(sizeMiB) + 'M');
+                        self.runWithProgress(_('Creating Partition'),
+                            callCreatePart('/dev/' + diskObj.name, layoutSel.value, ptypeSel.value, fsSel.value, szArg, labelInput.value.trim(), roleSel.value, Math.round(preMiB)),
+                            function() { self.refreshAll(); }
+                        );
+                    }
+                }, _('Create'))
+            ])
+        ]);
+    },
+
+    openFormatModal: function(seg) {
         var self = this;
         var fsSel = this.buildFsSelect(false);
         var labelInput = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': seg.label || '' });
