@@ -873,7 +873,7 @@ E('button', { 'class': 'btn cbi-button-action', 'disabled': !isPart ? true : nul
             E('button', { 'class': 'btn cbi-button-action', 'disabled': !isPart ? true : null, 'click': function() { if (isPart) self.openFormatModal(cur); } }, _('Format')),
 (function() { var st = isPart ? self.getLabelPkgStatus(cur.fstype) : { pkg: '', installed: true }; var tip = (isPart && !st.installed) ? (st.pkg ? _('Volume label editing requires %s (install in Config tab)').format(st.pkg) : _('Format partition first to edit volume label')) : null; return E('button', { 'title': tip, 'class': 'btn cbi-button-action', 'disabled': !isPart ? true : null, 'click': function() { if (isPart) self.openMetaModal(disk, cur, existingLayout); } }, _('Label / Type / Flags')); })(),
 E('button', {
-'class': 'btn', 'disabled': !isPart ? true : null,
+'class': 'btn cbi-button-action', 'disabled': !isPart ? true : null,
 'click': function() {
 if (!isPart) return;
 callMountAct(cur.mountpoint ? 'umount' : 'mount', cur.node, '/mnt/' + cur.name).then(function(r) {
