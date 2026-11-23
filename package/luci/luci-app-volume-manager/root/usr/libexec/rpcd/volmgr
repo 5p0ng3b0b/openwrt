@@ -128,13 +128,23 @@ sz_arg=""
 [ -n "$size_str" ] && [ "$size_str" != "max" ] && sz_arg=", $size_str"
 if [ "$cur_lbl" = "gpt" ]; then
 tguid=$(gpt_type_guid "$role")
-printf ',%s, %s\n' "${sz_arg#, }" "$tguid" | sfdisk --append "$disk" >> "$LOG_FILE" 2>&1
+start_arg=""
+    if [ "${offset_mib:-0}" -gt 0 ] 2>/dev/null; then
+        free_start=$(sfdisk -F "$disk" 2>/dev/null | awk '/^[[:space:]]*[0-9]+/ {print $1; exit}')
+        [ -n "$free_start" ] && start_arg=$((free_start + offset_mib * 2048))
+    fi
+    printf '%s,%s, %s\n' "$start_arg" "${sz_arg#, }" "$tguid" | sfdisk --append "$disk" >> "$LOG_FILE" 2>&1
 else
 thex=$(mbr_type_hex "$role")
 if [ "$ptype" = "extended" ]; then
 printf ',%s, E\n' "${sz_arg#, }" | sfdisk --append "$disk" >> "$LOG_FILE" 2>&1
 else
-printf ',%s, %s\n' "${sz_arg#, }" "$thex" | sfdisk --append "$disk" >> "$LOG_FILE" 2>&1
+start_arg=""
+            if [ "${offset_mib:-0}" -gt 0 ] 2>/dev/null; then
+                free_start=$(sfdisk -F "$disk" 2>/dev/null | awk '/^[[:space:]]*[0-9]+/ {print $1; exit}')
+                [ -n "$free_start" ] && start_arg=$((free_start + offset_mib * 2048))
+            fi
+            printf '%s,%s, %s\n' "$start_arg" "${sz_arg#, }" "$thex" | sfdisk --append "$disk" >> "$LOG_FILE" 2>&1
 fi
 fi
 if [ $? -ne 0 ]; then
@@ -332,7 +342,7 @@ json_add_object "create_part"
 json_add_string "disk" "string"; json_add_string "layout" "string"
 json_add_string "ptype" "string"; json_add_string "fstype" "string"
 json_add_string "size" "string"; json_add_string "label" "string"
-json_add_string "role" "string"
+json_add_string "role" "string"; json_add_int "offset_mib" 0
 json_close_object
 json_add_object "format_part"
 json_add_string "part" "string"; json_add_string "fstype" "string"; json_add_string "label" "string"
@@ -347,7 +357,7 @@ json_close_object
 json_add_object "set_part_meta"
 json_add_string "disk" "string"; json_add_int "num" 1
 json_add_string "label" "string"; json_add_string "fstype" "string"
-json_add_string "role" "string"; json_add_string "flags" "string"
+json_add_string "role" "string"; json_add_int "offset_mib" 0; json_add_string "flags" "string"
 json_close_object
 json_add_object "mount_action"
 json_add_string "action" "string"; json_add_string "part" "string"; json_add_string "target" "string"
@@ -421,9 +431,9 @@ packages)
 if [ -f "$JOB_FILE" ]; then cat "$JOB_FILE"; else echo '{"state":"idle","pct":0}'; fi
 ;;
 create_part)
-json_get_vars disk layout ptype fstype size label role
+json_get_vars disk layout ptype fstype size label role offset_mib
 is_safe_dev "$disk" || { echo '{"error":"Protected or invalid device"}'; exit 0; }
-run_create_job "$disk" "$layout" "$ptype" "$fstype" "$size" "$label" "$role" >/dev/null 2>&1 &
+run_create_job "$disk" "$layout" "$ptype" "$fstype" "$size" "$label" "$role" "$offset_mib" >/dev/null 2>&1 &
 echo '{"started":true}'
 ;;
 format_part)
