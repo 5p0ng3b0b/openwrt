@@ -180,8 +180,14 @@ return res;
 o = s.taboption('settings', form.Flag, 'enabled', _('Enable LCD Daemon'));
 o.default = '1'; o.rmempty = false;
 
-o = s.taboption('settings', form.Value, 'default_page', _('Startup Page (1..N)'));
-o.datatype = 'range(1,16)'; o.default = '1';
+o = s.taboption('settings', form.ListValue, 'default_page', _('Startup Page'));
+var pageCount = Math.max(1, Math.min(16, (uci.sections('ix4-lcd', 'page') || []).length));
+var savedDef = parseInt(uci.get('ix4-lcd', 'general', 'default_page') || '1', 10);
+if (savedDef > pageCount && savedDef <= 16) pageCount = savedDef;
+for (var pi = 1; pi <= pageCount; pi++) {
+o.value(String(pi), _('Page %d').format(pi));
+}
+o.default = '1';
 
 o = s.taboption('settings', form.ListValue, 'backlight', _('Backlight Brightness'));
 o.value('0', _('Off (0)'));
