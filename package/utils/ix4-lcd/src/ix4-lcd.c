@@ -237,6 +237,7 @@ static int row_needs_scroll(int cur_pg, int r, int tick) {
 }
 
 static void flush_fb(void) {
+ wr(0, 0x40);
  int p, x; for (p = 0; p < 8; p++) { wr(0, 0xB0 | p); wr(0, 0x10); wr(0, 0x00); for (x = 0; x < 128; x++) wr(1, fb[p][x]); }
 }
 
