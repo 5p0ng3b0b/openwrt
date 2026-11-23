@@ -229,15 +229,52 @@ fi
 }
 
 run_pkg_job() {
-action="$1"; pkgs="$2"
-t0=$(date +%s)
-write_job "running" 25 "Running apk $action $pkgs..." "$t0" 12 ""
-log_line "pkg_action: $action $pkgs"
-if apk "$action" $pkgs >> "$LOG_FILE" 2>&1; then
-write_job "done" 100 "Completed" "$t0" 0 "apk $action completed for: $pkgs"
-else
-write_job "error" 100 "Failed" "$t0" 0 "apk $action failed for: $pkgs (check internet/feeds)"
-fi
+    action="$1"; pkgs="$2"
+    t0=$(date +%s)
+    log_line "pkg_action: $action $pkgs"
+    if [ "$action" = "add" ]; then
+        write_job "running" 15 "Updating package index (apk update)..." "$t0" 15 ""
+        apk update >> "$LOG_FILE" 2>&1 || true
+        filtered=""
+        user_only=""
+        for p in $pkgs; do
+            case "$p" in
+                kmod-fs-ext4) grep -qw ext4 /proc/filesystems && continue ;;
+                kmod-fs-btrfs) grep -qw btrfs /proc/filesystems && continue ;;
+                kmod-fs-f2fs) grep -qw f2fs /proc/filesystems && continue ;;
+                kmod-fs-ntfs3) grep -qw ntfs3 /proc/filesystems && continue ;;
+                kmod-fs-exfat) grep -qw exfat /proc/filesystems && continue ;;
+                kmod-fs-vfat) grep -qw vfat /proc/filesystems && continue ;;
+                kmod-ata-core|kmod-ata-ahci) [ -d /sys/bus/pci/drivers/ahci ] && continue ;;
+                kmod-usb-storage) [ -d /sys/bus/usb/drivers/usb-storage ] && continue ;;
+            esac
+            filtered="$filtered $p"
+            case "$p" in kmod-*) ;; *) user_only="$user_only $p" ;; esac
+        done
+        filtered=$(echo "$filtered" | xargs)
+        user_only=$(echo "$user_only" | xargs)
+        [ -z "$filtered" ] && { write_job "done" 100 "Completed" "$t0" 0 "Already built into kernel"; return 0; }
+        write_job "running" 50 "Installing $filtered..." "$t0" 10 ""
+        if apk add $filtered >> "$LOG_FILE" 2>&1; then
+            write_job "done" 100 "Completed" "$t0" 0 "Installed: $filtered"
+        elif [ -n "$user_only" ] && [ "$user_only" != "$filtered" ] && apk add $user_only >> "$LOG_FILE" 2>&1; then
+            write_job "done" 100 "Completed" "$t0" 0 "Installed tools ($user_only); kmod requires kernel build"
+        else
+            write_job "error" 100 "Failed" "$t0" 0 "apk add failed for: $filtered (see /tmp/volmgr.log)"
+        fi
+    else
+        user_only=""
+        for p in $pkgs; do
+            case "$p" in kmod-*) ;; *) user_only="$user_only $p" ;; esac
+        done
+        user_only=$(echo "$user_only" | xargs)
+        write_job "running" 50 "Removing $user_only..." "$t0" 6 ""
+        if [ -n "$user_only" ] && apk del $user_only >> "$LOG_FILE" 2>&1; then
+            write_job "done" 100 "Completed" "$t0" 0 "Removed: $user_only"
+        else
+            write_job "error" 100 "Failed" "$t0" 0 "apk del failed for: $user_only"
+        fi
+    fi
 }
 
 case "$1" in
@@ -324,16 +361,20 @@ fi
 printf '{"installed":true,"smart":%s}\n' "$out"
 ;;
 packages)
-if command -v apk >/dev/null 2>&1; then
-plist=$(apk list --installed 2>/dev/null | awk '{print $1}')
-else
-plist=$(opkg list-installed 2>/dev/null | awk '{print $1}')
-fi
-json_init
-json_add_string "installed" "$plist"
-json_dump
-;;
-job_status)
+                if command -v apk >/dev/null 2>&1; then
+                    plist=$(apk list --installed 2>/dev/null | awk '{print $1}')
+                else
+                    plist=$(opkg list-installed 2>/dev/null | awk '{print $1}')
+                fi
+                kfs=$(awk '{print $NF}' /proc/filesystems 2>/dev/null | tr '\n' ' ')
+                kbuses=$(ls /sys/bus/scsi/drivers/sd /sys/bus/usb/drivers/usb-storage /sys/bus/pci/drivers/ahci 2>/dev/null | tr '\n' ' ')
+                json_init
+                json_add_string "installed" "$plist"
+                json_add_string "kfs" "$kfs"
+                json_add_string "kbuses" "$kbuses"
+                json_dump
+                ;;
+            job_status)
 if [ -f "$JOB_FILE" ]; then cat "$JOB_FILE"; else echo '{"state":"idle","pct":0}'; fi
 ;;
 create_part)
