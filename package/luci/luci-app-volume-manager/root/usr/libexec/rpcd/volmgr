@@ -260,6 +260,52 @@ run_resize_job() {
     write_job "done" 100 "Completed" "$t0" 0 "Resized $part successfully"
 }
 
+run_move_job() {
+    disk="$1"; num="$2"; delta_mib="$3"; fstype="$4"
+    part=$(part_path_for "$disk" "$num")
+    t0=$(date +%s)
+    log_line "move_part: disk=$disk num=$num delta_mib=$delta_mib fstype=$fstype"
+    write_job "running" 15 "Unmounting & checking $part before move..." "$t0" 20 ""
+    swapoff "$part" >/dev/null 2>&1 || true
+    umount -l "$part" >/dev/null 2>&1 || true
+    case "$fstype" in ext4|ext3|ext2) e2fsck -f -y "$part" >> "$LOG_FILE" 2>&1 || true ;; esac
+
+    cur_start=$(fdisk -l -u=sectors "$disk" 2>/dev/null | awk -v p="$part" '$1==p {print $2; exit}')
+    [ -z "$cur_start" ] && { write_job "error" 100 "Failed" "$t0" 0 "Could not determine start sector of $part"; return 1; }
+    new_start=$((cur_start + delta_mib * 2048))
+    [ "$new_start" -lt 2048 ] && new_start=2048
+
+    bname=$(basename "$disk")
+    part_secs=$(( $(lsblk -b -n -o SIZE "$part" 2>/dev/null | head -n1 || echo 1073741824) / 512 ))
+    [ "${part_secs:-0}" -le 0 ] && part_secs=2097152
+    s0=$(awk -v d="$bname" '$3==d {print $6; exit}' /proc/diskstats 2>/dev/null || echo 0)
+    echo "${new_start}," | sfdisk --no-reread --force --move-data "$disk" -N "$num" >> "$LOG_FILE" 2>&1 &
+    mv_pid=$!
+    while kill -0 "$mv_pid" 2>/dev/null; do
+        el=$(( $(date +%s) - t0 ))
+        s_now=$(awk -v d="$bname" '$3==d {print $6; exit}' /proc/diskstats 2>/dev/null || echo "$s0")
+        moved=$(( s_now - s0 ))
+        if [ "${moved:-0}" -gt 2048 ] && [ "$el" -gt 0 ]; then
+            pct=$(( 15 + (moved * 82) / part_secs ))
+            [ "$pct" -gt 97 ] && pct=97
+            rem=$(( (el * (part_secs - moved)) / moved ))
+            [ "$rem" -lt 1 ] && rem=1
+        else
+            pct=15
+            rem=0
+        fi
+        write_job "running" "$pct" "Relocating data blocks for $part (do not power off)..." "$t0" "$rem" ""
+        sleep 2
+    done
+    if wait "$mv_pid"; then
+        partx -u "$disk" >/dev/null 2>&1 || true
+        sleep 1
+        write_job "done" 100 "Completed" "$t0" 0 "Moved $part cleanly"
+    else
+        write_job "error" 100 "Failed" "$t0" 0 "sfdisk --move-data failed on $part (see /tmp/volmgr.log)"
+    fi
+}
+
 run_delete_job() {
 disk="$1"; num="$2"
 part=$(part_path_for "$disk" "$num")
@@ -347,7 +393,11 @@ json_add_object "resize_part"
 json_add_string "disk" "string"; json_add_int "num" 1
 json_add_string "size" "string"; json_add_string "fstype" "string"
 json_close_object
-json_add_object "delete_part"
+json_add_object "move_part"
+            json_add_string "disk" "string"; json_add_int "num" 1
+            json_add_int "delta_mib" 0; json_add_string "fstype" "string"
+        json_close_object
+        json_add_object "delete_part"
 json_add_string "disk" "string"; json_add_int "num" 1
 json_close_object
 json_add_object "set_part_meta"
@@ -368,7 +418,7 @@ read -r input
 json_load "$input"
 case "$2" in
 list)
-lsblk_json=$(lsblk -J -b -o NAME,KNAME,PKNAME,TYPE,SIZE,FSTYPE,LABEL,UUID,PARTTYPE,PARTTYPENAME,PARTFLAGS,MOUNTPOINT,MODEL,SERIAL,ROTA,TRAN 2>/dev/null || echo '{"blockdevices":[]}')
+lsblk_json=$(lsblk -J -b -o NAME,KNAME,PKNAME,TYPE,SIZE,FSTYPE,LABEL,UUID,PARTTYPE,PARTTYPENAME,PARTFLAGS,MOUNTPOINT,MODEL,SERIAL,ROTA,TRAN,PTTYPE,START 2>/dev/null || echo '{"blockdevices":[]}')
 printf '{"lsblk":%s}\n' "$lsblk_json"
 ;;
 info)
@@ -444,7 +494,13 @@ is_safe_dev "$disk" || { echo '{"error":"Protected or invalid device"}'; exit 0;
 run_resize_job "$disk" "$num" "$size" "$fstype" >/dev/null 2>&1 &
 echo '{"started":true}'
 ;;
-delete_part)
+move_part)
+                json_get_vars disk num delta_mib fstype
+                is_safe_dev "$disk" || { echo '{"error":"Protected or invalid device"}'; exit 0; }
+                run_move_job "$disk" "$num" "$delta_mib" "$fstype" >/dev/null 2>&1 &
+                echo '{"started":true}'
+                ;;
+            delete_part)
 json_get_vars disk num
 is_safe_dev "$disk" || { echo '{"error":"Protected or invalid device"}'; exit 0; }
 run_delete_job "$disk" "$num" >/dev/null 2>&1 &

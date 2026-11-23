@@ -14,7 +14,7 @@
 },
 "write": {
 "ubus": {
-"volmgr": [ "create_part", "format_part", "resize_part", "delete_part", "set_part_meta", "mount_action", "pkg_action" ]
+"volmgr": [ "create_part", "format_part", "resize_part", "move_part", "delete_part", "set_part_meta", "mount_action", "pkg_action" ]
 },
 "uci": [ "fstab" ]
 }
