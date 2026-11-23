@@ -45,7 +45,7 @@ selectedItem: null,
 disks: [],
 diskInfo: {},
 smartInfo: {},
-installedList: '',
+installedList: '', kfsList: '', kbusList: '',
 
 load: function() {
 return Promise.all([ callList(), callPackages(), uci.load('fstab') ]);
@@ -179,7 +179,7 @@ refreshAll: function() {
 var self = this;
 return Promise.all([ callList(), callPackages(), uci.load('fstab') ]).then(function(res) {
 self.disks = self.filterDisks(res.at(0));
-self.installedList = (res.at(1) && res.at(1).installed) || '';
+self.installedList = (res.at(1) && res.at(1).installed) || ''; self.kfsList = (res.at(1) && res.at(1).kfs) || ''; self.kbusList = (res.at(1) && res.at(1).kbuses) || '';
 if (!self.selectedDisk || !self.disks.some(function(d) { return '/dev/' + d.name === self.selectedDisk; })) {
 self.selectedDisk = self.disks.length ? ('/dev/' + self.disks.at(0).name) : null;
 }
@@ -622,11 +622,20 @@ renderInfoTab: function() {
     },
 
     isInstalled: function(pkgName) {
-var lines = (this.installedList || '').split('\n');
-return lines.some(function(l) { return l === pkgName || l.indexOf(pkgName + '-') === 0; });
-},
+        var kfs = (this.kfsList || '').split(/\s+/);
+        if (pkgName === 'kmod-fs-ext4' && kfs.indexOf('ext4') !== -1) return true;
+        if (pkgName === 'kmod-fs-btrfs' && kfs.indexOf('btrfs') !== -1) return true;
+        if (pkgName === 'kmod-fs-f2fs' && kfs.indexOf('f2fs') !== -1) return true;
+        if (pkgName === 'kmod-fs-ntfs3' && kfs.indexOf('ntfs3') !== -1) return true;
+        if (pkgName === 'kmod-fs-exfat' && kfs.indexOf('exfat') !== -1) return true;
+        if (pkgName === 'kmod-fs-vfat' && kfs.indexOf('vfat') !== -1) return true;
+        if ((pkgName === 'kmod-ata-core' || pkgName === 'kmod-ata-ahci') && (this.kbusList || '').length > 0) return true;
+        if (pkgName === 'kmod-usb-storage' && (this.kbusList || '').length > 0) return true;
+        var lines = (this.installedList || '').split('\n');
+        return lines.some(function(l) { return l === pkgName || l.indexOf(pkgName + '-') === 0; });
+    },
 
-renderConfigTab: function() {
+    renderConfigTab: function() {
 var self = this;
 var groups = [
 {
@@ -662,13 +671,13 @@ items: [
 ]
 },
 {
-title: 'Volumes & Backup (Tabs 4 & 5)',
+title: 'Volumes & Backup',
 desc: 'Packages for RAID, LVM, LUKS encryption, iSCSI, and rsync jobs.',
 items: [
 { label: 'Software RAID (mdadm)', pkgs: 'mdadm' },
 { label: 'LVM2', pkgs: 'lvm2' },
 { label: 'LUKS Encryption', pkgs: 'cryptsetup' },
-{ label: 'iSCSI Target', pkgs: 'tgt' },
+{ label: 'iSCSI Target', pkgs: 'tgt' }, { label: 'iSCSI Initiator', pkgs: 'open-iscsi' },
 { label: 'Rsync Backup', pkgs: 'rsync' }
 ]
 }
@@ -742,7 +751,7 @@ this.rootNode.appendChild(E('div', { 'class': 'cbi-section' }, [ body ]));
 
 render: function(data) {
 this.disks = this.filterDisks(data.at(0));
-this.installedList = (data.at(1) && data.at(1).installed) || '';
+this.installedList = (data.at(1) && data.at(1).installed) || ''; this.kfsList = (data.at(1) && data.at(1).kfs) || ''; this.kbusList = (data.at(1) && data.at(1).kbuses) || '';
 this.selectedDisk = this.disks.length ? ('/dev/' + this.disks.at(0).name) : null;
 this.rootNode = E('div', { 'class': 'cbi-map' });
 
