@@ -98,7 +98,31 @@ if (lastLba - cursor > 2048) {
 segs.push({ kind: 'free', name: 'Unallocated', size: (lastLba - cursor + 1) * secSize, startSec: cursor, endSec: lastLba });
 }
 } else {
-segs.push({ kind: 'free', name: 'Unallocated (No partition table)', size: totalBytes });
+if (parts.length > 0) {
+            var used = 0;
+            parts.forEach(function(child, idx) {
+                var sz = Number(child.size) || 0;
+                used += sz;
+                var pnum = Number((child.name || '').replace(/^.*[^0-9]/, '')) || (idx + 1);
+                segs.push({
+                    kind: 'part', num: pnum,
+                    node: '/dev/' + child.name,
+                    name: child.name,
+                    size: sz,
+                    fstype: child.fstype || '',
+                    label: child.label || '',
+                    uuid: child.uuid || '',
+                    parttype: child.parttypename || '',
+                    flags: child.partflags || '',
+                    mountpoint: child.mountpoint || ''
+                });
+            });
+            if (totalBytes - used > 1048576) {
+                segs.push({ kind: 'free', name: 'Unallocated', size: totalBytes - used });
+            }
+        } else {
+            segs.push({ kind: 'free', name: 'Unallocated (No partition table)', size: totalBytes });
+        }
 }
 return segs;
 },
@@ -372,7 +396,7 @@ return E('option', { 'value': dev, 'selected': dev === self.selectedDisk ? 'sele
 }));
 
 var sfd = (this.diskInfo && this.diskInfo.sfdisk && this.diskInfo.sfdisk.partitiontable) || {};
-var tblLabel = sfd.label ? sfd.label.toUpperCase() : _('Unformatted');
+var pt = sfd.label || this.getCurDisk().pttype || ''; var tblLabel = pt ? (pt === 'dos' ? 'MBR' : pt.toUpperCase()) : _('Unformatted');
 var temp = (this.smartInfo && this.smartInfo.smart && this.smartInfo.smart.temperature && this.smartInfo.smart.temperature.current);
 
 return E('div', {
@@ -396,7 +420,7 @@ if (!this.disks.length) return E('div', { 'class': 'cbi-section' }, E('p', {}, _
 
 var disk = this.getCurDisk();
 var sfd = (this.diskInfo && this.diskInfo.sfdisk && this.diskInfo.sfdisk.partitiontable) || {};
-var existingLayout = (sfd.label === 'gpt') ? 'gpt' : (sfd.label === 'dos' ? 'mbr' : null);
+var ptRaw = sfd.label || disk.pttype || ''; var existingLayout = (ptRaw === 'gpt') ? 'gpt' : (ptRaw === 'dos' ? 'mbr' : null);
 var segs = this.buildSegments(disk, this.diskInfo);
 if (!this.selectedItem && segs.length) this.selectedItem = segs[0];
 
@@ -408,11 +432,11 @@ var pct = Math.max(4, (Number(sg.size) / totalBytes) * 100);
 var isSel = self.selectedItem && (self.selectedItem.node === sg.node && self.selectedItem.startSec === sg.startSec);
 var bg = sg.kind === 'free' ? 'repeating-linear-gradient(45deg, rgba(128,128,128,0.12), rgba(128,128,128,0.12) 8px, rgba(128,128,128,0.22) 8px, rgba(128,128,128,0.22) 16px)' : (FS_COLORS[sg.fstype] || '#455a64');
 return E('div', {
-'style': 'flex:' + pct + ' 1 0; min-width:56px; background:' + bg + '; color:#fff; padding:6px 8px; box-sizing:border-box; cursor:pointer; display:flex; flex-direction:column; justify-content:center; border-right:1px solid rgba(0,0,0,0.4); outline:' + (isSel ? '3px solid #ffd54f' : 'none') + '; outline-offset:-3px;',
+'style': 'flex:' + pct + ' 1 0; min-width:72px; overflow:hidden; background:' + bg + '; color:#fff; padding:6px 8px; box-sizing:border-box; cursor:pointer; display:flex; flex-direction:column; justify-content:center; border-right:1px solid rgba(0,0,0,0.4); outline:' + (isSel ? '3px solid #ffd54f' : 'none') + '; outline-offset:-3px;',
 'click': function() { self.selectedItem = sg; self.renderMain(); }
 }, [
 E('div', { 'style': 'font-size:12px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;' }, sg.kind === 'free' ? _('Unallocated') : sg.name),
-E('div', { 'style': 'font-size:11px; opacity:0.9; white-space:nowrap;' }, (sg.fstype ? sg.fstype + ' · ' : '') + fmtBytes(sg.size))
+E('div', { 'style': 'font-size:11px; opacity:0.9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;' }, (sg.fstype ? sg.fstype + ' · ' : '') + fmtBytes(sg.size))
 ]);
 }));
 
@@ -542,57 +566,62 @@ E('table', { 'class': 'table cbi-section-table' }, rows)
 },
 
 renderInfoTab: function() {
-if (!this.disks.length) return E('p', {}, _('No storage disks detected.'));
-var disk = this.getCurDisk();
-var sm = (this.smartInfo && this.smartInfo.smart) || {};
-var isSsd = (this.diskInfo.rotational === '0') || (sm.rotation_rate === 0);
-var sataSpd = (sm.sata_version && sm.sata_version.current && sm.sata_version.current.string) || '';
-var linkSpd = sataSpd || this.diskInfo.usb_speed || (disk.tran || 'Standard').toUpperCase();
-var wearPct = (sm.nvme_smart_health_information_log && sm.nvme_smart_health_information_log.percentage_used != null)
-? (100 - sm.nvme_smart_health_information_log.percentage_used) + '% remaining' : 'See S.M.A.R.T. table below';
+        if (!this.disks.length) return E('p', {}, _('No storage disks detected.'));
+        var disk = this.getCurDisk();
+        var sm = (this.smartInfo && this.smartInfo.smart) || {};
+        var isSsd = (this.diskInfo.rotational === '0') || (sm.rotation_rate === 0);
+        var sataSpd = (sm.sata_version && sm.sata_version.current && sm.sata_version.current.string)
+            ? ('SATA (' + sm.sata_version.current.string + ')') : '';
+        var linkSpd = sataSpd || this.diskInfo.usb_speed || (disk.tran || 'Standard').toUpperCase();
+        var attrs = (sm.ata_smart_attributes && sm.ata_smart_attributes.table) || [];
+        var wearAttr = attrs.find(function(a) { return a.id === 202 || a.id === 231 || a.id === 233 || a.id === 177; });
+        var wearPct = (sm.nvme_smart_health_information_log && sm.nvme_smart_health_information_log.percentage_used != null)
+            ? (100 - sm.nvme_smart_health_information_log.percentage_used) + '% remaining'
+            : (wearAttr ? (wearAttr.value + '% remaining (' + wearAttr.name + ')') : 'See S.M.A.R.T. table below');
 
-var summaryCard = E('div', {
-'style': 'display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:16px;'
-}, [
-['Model', sm.model_name || disk.model || 'Unknown'],
-['Serial Number', sm.serial_number || disk.serial || 'N/A'],
-['Firmware', sm.firmware_version || 'N/A'],
-['Capacity', fmtBytes(disk.size)],
-['Media Type', isSsd ? 'Solid State Drive (SSD)' : 'Rotational HDD'],
-['Interface & Speed', linkSpd],
-['Sector Size (Log/Phys)', (this.diskInfo.logical_bs || 512) + ' / ' + (this.diskInfo.physical_bs || 512) + ' B'],
-['S.M.A.R.T. Health', sm.smart_status ? (sm.smart_status.passed ? 'PASSED' : 'FAILED') : (this.smartInfo.installed ? 'Unavailable' : 'smartmontools not installed')],
-['Power-On Hours', (sm.power_on_time && sm.power_on_time.hours != null) ? (sm.power_on_time.hours + ' hrs') : 'N/A'],
-['SSD Wear / Health', isSsd ? wearPct : 'N/A (HDD)']
-].map(function(pair) {
-return E('div', {
-'style': 'padding:10px 12px; border-radius:6px; background:var(--background-color-medium, rgba(255,255,255,0.03)); border:1px solid var(--border-color-medium, rgba(128,128,128,0.25));'
-}, [
-E('div', { 'style': 'font-size:11px; opacity:0.75;' }, _(pair.at(0))),
-E('div', { 'style': 'font-size:14px; font-weight:600; margin-top:2px;' }, String(pair.at(1)))
-]);
-}));
+        var cards = [
+            { k: 'Model', v: sm.model_name || disk.model || 'Unknown' },
+            { k: 'Serial Number', v: sm.serial_number || disk.serial || 'N/A' },
+            { k: 'Firmware', v: sm.firmware_version || 'N/A' },
+            { k: 'Capacity', v: fmtBytes(disk.size) },
+            { k: 'Media Type', v: isSsd ? 'Solid State Drive (SSD)' : 'Rotational HDD' },
+            { k: 'Interface & Speed', v: linkSpd },
+            { k: 'Sector Size (Log/Phys)', v: (this.diskInfo.logical_bs || 512) + ' / ' + (this.diskInfo.physical_bs || 512) + ' B' },
+            { k: 'S.M.A.R.T. Health', v: sm.smart_status ? (sm.smart_status.passed ? 'PASSED' : 'FAILED') : (this.smartInfo.installed ? 'Unavailable' : 'smartmontools not installed') },
+            { k: 'Power-On Hours', v: (sm.power_on_time && sm.power_on_time.hours != null) ? (sm.power_on_time.hours + ' hrs') : 'N/A' },
+            { k: 'SSD Wear / Health', v: isSsd ? wearPct : 'N/A (HDD)' }
+        ];
 
-var attrs = (sm.ata_smart_attributes && sm.ata_smart_attributes.table) || [];
-var attrTbl = attrs.length ? E('table', { 'class': 'table cbi-section-table' }, [
-E('tr', { 'class': 'tr table-titles' }, [
-E('th', { 'class': 'th' }, 'ID'), E('th', { 'class': 'th' }, _('Attribute')),
-E('th', { 'class': 'th' }, _('Value')), E('th', { 'class': 'th' }, _('Worst')),
-E('th', { 'class': 'th' }, _('Thresh')), E('th', { 'class': 'th' }, _('Raw Value'))
-])
-].concat(attrs.map(function(a) {
-return E('tr', { 'class': 'tr' }, [
-E('td', { 'class': 'td' }, String(a.id)), E('td', { 'class': 'td' }, a.name || ''),
-E('td', { 'class': 'td' }, String(a.value)), E('td', { 'class': 'td' }, String(a.worst)),
-E('td', { 'class': 'td' }, String(a.thresh)),
-E('td', { 'class': 'td' }, (a.raw && a.raw.string) ? a.raw.string : String((a.raw && a.raw.value) || 0))
-]);
-}))) : E('p', { 'style': 'opacity:0.8;' }, _('No detailed ATA S.M.A.R.T. attribute table reported (install smartmontools in Config tab if missing).'));
+        var summaryCard = E('div', {
+            'style': 'display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:16px;'
+        }, cards.map(function(c) {
+            return E('div', {
+                'style': 'padding:10px 12px; border-radius:6px; background:var(--background-color-medium, rgba(255,255,255,0.03)); border:1px solid var(--border-color-medium, rgba(128,128,128,0.25));'
+            }, [
+                E('div', { 'style': 'font-size:11px; opacity:0.75;' }, _(c.k)),
+                E('div', { 'style': 'font-size:14px; font-weight:600; margin-top:2px;' }, String(c.v))
+            ]);
+        }));
 
-return E('div', {}, [ this.renderDiskSelector(), summaryCard, attrTbl ]);
-},
+        var attrTbl = attrs.length ? E('table', { 'class': 'table cbi-section-table' }, [
+            E('tr', { 'class': 'tr table-titles' }, [
+                E('th', { 'class': 'th' }, 'ID'), E('th', { 'class': 'th' }, _('Attribute')),
+                E('th', { 'class': 'th' }, _('Value')), E('th', { 'class': 'th' }, _('Worst')),
+                E('th', { 'class': 'th' }, _('Thresh')), E('th', { 'class': 'th' }, _('Raw Value'))
+            ])
+        ].concat(attrs.map(function(a) {
+            return E('tr', { 'class': 'tr' }, [
+                E('td', { 'class': 'td' }, String(a.id)), E('td', { 'class': 'td' }, a.name || ''),
+                E('td', { 'class': 'td' }, String(a.value)), E('td', { 'class': 'td' }, String(a.worst)),
+                E('td', { 'class': 'td' }, String(a.thresh)),
+                E('td', { 'class': 'td' }, (a.raw && a.raw.string) ? a.raw.string : String((a.raw && a.raw.value) || 0))
+            ]);
+        }))) : E('p', { 'style': 'opacity:0.8;' }, _('No detailed ATA S.M.A.R.T. attribute table reported.'));
 
-isInstalled: function(pkgName) {
+        return E('div', {}, [ this.renderDiskSelector(), summaryCard, attrTbl ]);
+    },
+
+    isInstalled: function(pkgName) {
 var lines = (this.installedList || '').split('\n');
 return lines.some(function(l) { return l === pkgName || l.indexOf(pkgName + '-') === 0; });
 },
@@ -645,7 +674,7 @@ items: [
 }
 ];
 
-return E('div', { 'style': 'display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:14px;' }, groups.map(function(g) {
+return E('div', { 'style': 'display:grid; grid-template-columns:repeat(2, minmax(320px, 1fr)); gap:14px;' }, groups.map(function(g) {
 return E('div', {
 'style': 'padding:14px 16px; border-radius:6px; background:var(--background-color-medium, rgba(255,255,255,0.03)); border:1px solid var(--border-color-medium, rgba(128,128,128,0.25));'
 }, [
