@@ -81,6 +81,32 @@ jobs:
           CONFIG_PACKAGE_curl=y
           EOC
           fi
+          printf '%s\n' \
+            CONFIG_PACKAGE_ix4-lcd=y \
+            CONFIG_PACKAGE_luci-app-ix4-lcd=y \
+            CONFIG_PACKAGE_luci-app-volume-manager=y \
+            CONFIG_ALL_KMODS=y \
+            CONFIG_PACKAGE_kmod-crypto-marvell=m \
+            CONFIG_PACKAGE_kmod-fs-ntfs3=m \
+            CONFIG_PACKAGE_kmod-fs-xfs=m \
+            CONFIG_PACKAGE_kmod-fs-exfat=m \
+            CONFIG_PACKAGE_kmod-fs-vfat=m \
+            CONFIG_PACKAGE_kmod-fs-f2fs=m \
+            CONFIG_PACKAGE_kmod-fs-ext4=m \
+            CONFIG_PACKAGE_kmod-fs-nfsd=m \
+            CONFIG_PACKAGE_kmod-fs-nfs=m \
+            CONFIG_PACKAGE_kmod-fs-nfs-v4=m \
+            CONFIG_PACKAGE_kmod-fs-cifs=m \
+            CONFIG_PACKAGE_kmod-usb-storage-uas=m \
+            CONFIG_PACKAGE_kmod-usb-storage-extras=m \
+            CONFIG_PACKAGE_kmod-loop=m \
+            CONFIG_PACKAGE_btrfs-progs=m \
+            CONFIG_PACKAGE_ntfs-3g=m \
+            CONFIG_PACKAGE_mdadm=m \
+            CONFIG_PACKAGE_lvm2=m \
+            CONFIG_PACKAGE_cryptsetup=m \
+            CONFIG_PACKAGE_open-iscsi=m \
+            CONFIG_PACKAGE_tgt=m >> .config
           make defconfig
 
       - name: Download sources
@@ -96,7 +122,7 @@ jobs:
           find bin/targets/mvebu/cortexa9/ -maxdepth 2 -type f \
             \( -name "*.img" -o -name "*.bin" -o -name "*.kwb" -o -name "*.manifest" \) \
             -exec cp -v {} release-files/ \;
-          find bin/packages/ -type f \( -name "*ix4-lcd*.apk" -o -name "*mini-diskmanager*.apk" -o -name "*ix4-lcd*.ipk" \) \
+          find bin/packages/ -type f \( -name "*ix4-lcd*.apk" -o -name "*mini-diskmanager*.apk" -o -name "*volume-manager*.apk" -o -name "*ix4-lcd*.ipk" \) \
             -exec cp -v {} release-files/ \;
           (cd release-files && sha256sum * > SHA256SUMS)
           ls -lh release-files/
