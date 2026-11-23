@@ -470,7 +470,7 @@ read -r input
 json_load "$input"
 case "$2" in
 list)
-lsblk_json=$(lsblk -J -b -o NAME,KNAME,PKNAME,TYPE,SIZE,FSTYPE,LABEL,UUID,PARTTYPE,PARTTYPENAME,PARTFLAGS,MOUNTPOINT,MODEL,SERIAL,ROTA,TRAN,PTTYPE,START 2>/dev/null || echo '{"blockdevices":[]}')
+lsblk_json=$(lsblk -e 31 -J -b -o NAME,KNAME,PKNAME,TYPE,SIZE,FSTYPE,LABEL,UUID,PARTTYPE,PARTTYPENAME,PARTFLAGS,MOUNTPOINT,MODEL,SERIAL,ROTA,TRAN,PTTYPE,START 2>/dev/null || echo '{"blockdevices":[]}')
 printf '{"lsblk":%s}\n' "$lsblk_json"
 ;;
 info)
