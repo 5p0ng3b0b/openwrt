@@ -356,7 +356,21 @@ self.refreshAll();
 ]);
 },
 
-getCurDisk: function() {
+    detectTableLayout: function(disk) {
+        var sfd = (this.diskInfo && this.diskInfo.sfdisk && this.diskInfo.sfdisk.partitiontable) || {};
+        var pt = sfd.label || (disk && disk.pttype) || '';
+        if (pt === 'gpt') return 'gpt';
+        if (pt === 'dos' || pt === 'mbr') return 'mbr';
+        var kids = (disk && disk.children) || [];
+        if (kids.length > 0) {
+            var firstType = String(kids.at(0).parttype || '');
+            if (firstType.indexOf('-') !== -1) return 'gpt';
+            return 'mbr';
+        }
+        return null;
+    },
+
+    getCurDisk: function() {
 var self = this;
 return this.disks.find(function(d) { return '/dev/' + d.name === self.selectedDisk; }) || this.disks[0] || {};
 },
@@ -378,7 +392,7 @@ return E('option', { 'value': dev, 'selected': dev === self.selectedDisk ? 'sele
 }));
 
 var sfd = (this.diskInfo && this.diskInfo.sfdisk && this.diskInfo.sfdisk.partitiontable) || {};
-var pt = sfd.label || this.getCurDisk().pttype || ''; var tblLabel = pt ? (pt === 'dos' ? 'MBR' : pt.toUpperCase()) : _('Unformatted');
+var det = this.detectTableLayout(this.getCurDisk()); var tblLabel = det ? det.toUpperCase() : _('Unformatted');
 var temp = (this.smartInfo && this.smartInfo.smart && this.smartInfo.smart.temperature && this.smartInfo.smart.temperature.current);
 
 return E('div', {
@@ -402,7 +416,7 @@ if (!this.disks.length) return E('div', { 'class': 'cbi-section' }, E('p', {}, _
 
 var disk = this.getCurDisk();
 var sfd = (this.diskInfo && this.diskInfo.sfdisk && this.diskInfo.sfdisk.partitiontable) || {};
-var ptRaw = sfd.label || disk.pttype || ''; var existingLayout = (ptRaw === 'gpt') ? 'gpt' : (ptRaw === 'dos' ? 'mbr' : null);
+var existingLayout = this.detectTableLayout(disk);
 var segs = this.buildSegments(disk, this.diskInfo);
 if (!this.selectedItem && segs.length) this.selectedItem = segs[0];
 
