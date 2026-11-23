@@ -119,6 +119,8 @@ jobs:
         run: |
           mkdir -p release-files
           find build_dir/ -path '*u-boot-ix4-300d*/u-boot.bin' -exec cp -v {} release-files/ \;
+          find build_dir/target-* -path '*linux-mvebu_cortexa9/linux-*/arch/arm/boot/dts/marvell/armada-xp-lenovo-ix4-300d.dts' -exec cp -v {} release-files/armada-xp-lenovo-ix4-300d.dts \;
+          find build_dir/target-* -path '*u-boot-ix4-300d/u-boot-*/arch/arm/dts/armada-xp-lenovo-ix4-300d.dts' -exec cp -v {} release-files/u-boot-armada-xp-lenovo-ix4-300d.dts \;
           find bin/targets/mvebu/cortexa9/ -maxdepth 2 -type f \
             \( -name "*.img" -o -name "*.bin" -o -name "*.kwb" -o -name "*.manifest" \) \
             -exec cp -v {} release-files/ \;
