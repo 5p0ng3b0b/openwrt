@@ -370,8 +370,20 @@ run_pkg_job() {
         write_job "running" 50 "Installing $filtered..." "$t0" 10 ""
         if apk add $filtered >> "$LOG_FILE" 2>&1; then
             write_job "done" 100 "Completed" "$t0" 0 "Installed: $filtered"
-        elif [ -n "$user_only" ] && [ "$user_only" != "$filtered" ] && apk add $user_only >> "$LOG_FILE" 2>&1; then
-            write_job "done" 100 "Completed" "$t0" 0 "Installed tools ($user_only); kmod requires kernel build"
+        elif [ -n "$user_only" ]; then
+            ok_u=""
+            for _u in $user_only; do apk add "$_u" >> "$LOG_FILE" 2>&1 && ok_u="$ok_u $_u"; done
+            ok_u=$(echo "$ok_u" | xargs)
+            if [ -n "$ok_u" ]; then
+                write_job "done" 100 "Completed" "$t0" 0 "Installed tools ($ok_u); kmod requires kernel build"
+            else
+                if tail -n 10 "$LOG_FILE" | grep -q "kmod-"; then
+                missing_km=$(tail -n 10 "$LOG_FILE" | sed -n 's/.*\(kmod-[a-z0-9-]*\).*/\1/p' | sort -u | tr '\n' ' ' | xargs)
+                write_job "error" 100 "Kernel Module Missing" "$t0" 0 "Requires $missing_km — not built into this firmware image (enable in make menuconfig)."
+            else
+                write_job "error" 100 "Failed" "$t0" 0 "apk add failed for: $filtered (see /tmp/volmgr.log)"
+            fi
+            fi
         else
             write_job "error" 100 "Failed" "$t0" 0 "apk add failed for: $filtered (see /tmp/volmgr.log)"
         fi
@@ -490,7 +502,7 @@ packages)
                 else
                     plist=$(opkg list-installed 2>/dev/null | awk '{print $1}')
                 fi
-                kfs=$(awk '{print $NF}' /proc/filesystems 2>/dev/null | tr '\n' ' ')
+                kfs=$( (awk '{print $NF}' /proc/filesystems 2>/dev/null; find /lib/modules/$(uname -r) -name '*.ko' 2>/dev/null | sed 's#.*/##;s#\.ko$##') | sort -u | tr '\n' ' ')
                 kbuses=$(ls /sys/bus/scsi/drivers/sd /sys/bus/usb/drivers/usb-storage /sys/bus/pci/drivers/ahci 2>/dev/null | tr '\n' ' ')
                 json_init
                 json_add_string "installed" "$plist"

@@ -1065,7 +1065,7 @@ E('table', { 'class': 'table cbi-section-table' }, rows)
         if (pkgName === 'kmod-fs-ext4' && kfs.indexOf('ext4') !== -1) return true;
         if (pkgName === 'kmod-fs-btrfs' && kfs.indexOf('btrfs') !== -1) return true;
         if (pkgName === 'kmod-fs-f2fs' && kfs.indexOf('f2fs') !== -1) return true;
-        if (pkgName === 'kmod-fs-ntfs3' && kfs.indexOf('ntfs3') !== -1) return true;
+        if (pkgName === 'kmod-fs-ntfs3' && (kfs.indexOf('ntfs3') !== -1 || kfs.indexOf('fuse') !== -1)) return true;
         if (pkgName === 'kmod-fs-exfat' && kfs.indexOf('exfat') !== -1) return true;
         if (pkgName === 'kmod-fs-vfat' && kfs.indexOf('vfat') !== -1) return true;
         if ((pkgName === 'kmod-ata-core' || pkgName === 'kmod-ata-ahci') && (this.kbusList || '').length > 0) return true;
@@ -1128,7 +1128,7 @@ items: [
 { label: 'Ext4 / Resize2fs', pkgs: 'kmod-fs-ext4 e2fsprogs resize2fs' },
 { label: 'Btrfs', pkgs: 'kmod-fs-btrfs btrfs-progs' },
 { label: 'F2FS', pkgs: 'kmod-fs-f2fs f2fs-tools' },
-{ label: 'NTFS', pkgs: 'kmod-fs-ntfs3 ntfs-3g' },
+{ label: 'NTFS', pkgs: 'kmod-fs-ntfs3 ntfs-3g ntfs-3g-utils' },
 { label: 'exFAT', pkgs: 'kmod-fs-exfat exfat-mkfs exfat-fsck' },
 { label: 'FAT16 / FAT32', pkgs: 'kmod-fs-vfat dosfstools' },
 { label: 'Swap', pkgs: 'swap-utils' }
