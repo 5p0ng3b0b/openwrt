@@ -171,44 +171,87 @@ fi
 }
 
 run_resize_job() {
-disk="$1"; num="$2"; new_size="$3"; fstype="$4"
-part=$(part_path_for "$disk" "$num")
-t0=$(date +%s)
-write_job "running" 20 "Updating partition $part boundary to $new_size..." "$t0" 10 ""
-log_line "resize_part: disk=$disk num=$num new_size=$new_size fstype=$fstype"
+    disk="$1"; num="$2"; new_size="$3"; fstype="$4"
+    part=$(part_path_for "$disk" "$num")
+    t0=$(date +%s)
+    log_line "resize_part: disk=$disk num=$num new_size=$new_size fstype=$fstype"
 
-if [ "$new_size" = "max" ]; then
-echo ", +" | sfdisk --no-reread -N "$num" "$disk" >> "$LOG_FILE" 2>&1
-else
-echo ", $new_size" | sfdisk --no-reread -N "$num" "$disk" >> "$LOG_FILE" 2>&1
-fi
-if [ $? -ne 0 ]; then
-write_job "error" 100 "Failed" "$t0" 0 "sfdisk resize failed on $part"; return 1;
-fi
-partx -u "$disk" >/dev/null 2>&1 || true
-sleep 1
+    case "$new_size" in
+        -*)
+            write_job "running" 20 "Unmounting & checking $fstype filesystem before shrink..." "$t0" 12 ""
+            umount -l "$part" >/dev/null 2>&1 || true
+            cur_bytes=$(lsblk -b -n -o SIZE "$part" 2>/dev/null | head -n1)
+            delta_num=$(echo "$new_size" | sed -E 's/^-([0-9]+).*/\1/')
+            delta_unit=$(echo "$new_size" | sed -E 's/^-[0-9]+([KkMmGgTt]?).*/\1/')
+            mult=1048576
+            case "$delta_unit" in
+                K|k) mult=1024 ;;
+                M|m|"") mult=1048576 ;;
+                G|g) mult=1073741824 ;;
+                T|t) mult=1099511627776 ;;
+            esac
+            tgt_mib=$(( (cur_bytes - delta_num * mult) / 1048576 ))
+            [ "$tgt_mib" -lt 64 ] && { write_job "error" 100 "Failed" "$t0" 0 "Target shrink size too small (<64 MiB)"; return 1; }
+            case "$fstype" in
+                ext4|ext3|ext2)
+                    e2fsck -f -y "$part" >> "$LOG_FILE" 2>&1 || true
+                    write_job "running" 45 "Shrinking $fstype filesystem to ${tgt_mib}M..." "$t0" 8 ""
+                    resize2fs "$part" "${tgt_mib}M" >> "$LOG_FILE" 2>&1 || {
+                        write_job "error" 100 "Failed" "$t0" 0 "resize2fs shrink failed on $part"; return 1;
+                    } ;;
+                ntfs)
+                    write_job "running" 45 "Shrinking NTFS filesystem to ${tgt_mib}M..." "$t0" 8 ""
+                    ntfsresize -f -f -s "${tgt_mib}M" "$part" >> "$LOG_FILE" 2>&1 || {
+                        write_job "error" 100 "Failed" "$t0" 0 "ntfsresize shrink failed on $part"; return 1;
+                    } ;;
+                *)
+                    write_job "error" 100 "Failed" "$t0" 0 "Shrinking is only supported on ext2/3/4 and NTFS"; return 1 ;;
+            esac
+            write_job "running" 75 "Shrinking partition $part boundary..." "$t0" 4 ""
+            echo ", $new_size" | sfdisk --no-reread --force -N "$num" "$disk" >> "$LOG_FILE" 2>&1 || {
+                write_job "error" 100 "Failed" "$t0" 0 "sfdisk boundary shrink failed on $part"; return 1;
+            }
+            partx -u "$disk" >/dev/null 2>&1 || true
+            sleep 1
+            case "$fstype" in ext4|ext3|ext2) resize2fs "$part" >> "$LOG_FILE" 2>&1 || true ;; esac
+            write_job "done" 100 "Completed" "$t0" 0 "Shrunk $part safely to ${tgt_mib} MiB"
+            return 0
+            ;;
+    esac
 
-write_job "running" 60 "Resizing $fstype filesystem on $part..." "$t0" 6 ""
-case "$fstype" in
-ext4|ext3|ext2)
-if ! grep -q "^${part} " /proc/mounts; then e2fsck -f -y "$part" >> "$LOG_FILE" 2>&1 || true; fi
-resize2fs "$part" >> "$LOG_FILE" 2>&1 ;;
-btrfs)
-mnt=$(awk -v d="$part" '$1==d{print $2; exit}' /proc/mounts)
-if [ -n "$mnt" ]; then btrfs filesystem resize max "$mnt" >> "$LOG_FILE" 2>&1
-else
-mkdir -p /tmp/volmgr_mnt && mount "$part" /tmp/volmgr_mnt && btrfs filesystem resize max /tmp/volmgr_mnt >> "$LOG_FILE" 2>&1
-umount /tmp/volmgr_mnt >/dev/null 2>&1 || true
-fi ;;
-f2fs)
-resize.f2fs "$part" >> "$LOG_FILE" 2>&1 ;;
-ntfs)
-ntfsresize -f -f "$part" >> "$LOG_FILE" 2>&1 ;;
-esac
-if [ $? -ne 0 ]; then
-write_job "error" 100 "Failed" "$t0" 0 "Filesystem resize failed on $part"; return 1;
-fi
-write_job "done" 100 "Completed" "$t0" 0 "Resized $part successfully"
+    write_job "running" 20 "Updating partition $part boundary to $new_size..." "$t0" 10 ""
+    if [ "$new_size" = "max" ]; then
+        echo ", +" | sfdisk --no-reread --force -N "$num" "$disk" >> "$LOG_FILE" 2>&1
+    else
+        echo ", $new_size" | sfdisk --no-reread --force -N "$num" "$disk" >> "$LOG_FILE" 2>&1
+    fi
+    if [ $? -ne 0 ]; then
+        write_job "error" 100 "Failed" "$t0" 0 "sfdisk resize failed on $part"; return 1;
+    fi
+    partx -u "$disk" >/dev/null 2>&1 || true
+    sleep 1
+
+    write_job "running" 60 "Resizing $fstype filesystem on $part..." "$t0" 6 ""
+    case "$fstype" in
+        ext4|ext3|ext2)
+            if ! grep -q "^${part} " /proc/mounts; then e2fsck -f -y "$part" >> "$LOG_FILE" 2>&1 || true; fi
+            resize2fs "$part" >> "$LOG_FILE" 2>&1 ;;
+        btrfs)
+            mnt=$(awk -v d="$part" '$1==d{print $2; exit}' /proc/mounts)
+            if [ -n "$mnt" ]; then btrfs filesystem resize max "$mnt" >> "$LOG_FILE" 2>&1
+            else
+                mkdir -p /tmp/volmgr_mnt && mount "$part" /tmp/volmgr_mnt && btrfs filesystem resize max /tmp/volmgr_mnt >> "$LOG_FILE" 2>&1
+                umount /tmp/volmgr_mnt >/dev/null 2>&1 || true
+            fi ;;
+        f2fs)
+            resize.f2fs "$part" >> "$LOG_FILE" 2>&1 ;;
+        ntfs)
+            ntfsresize -f -f "$part" >> "$LOG_FILE" 2>&1 ;;
+    esac
+    if [ $? -ne 0 ]; then
+        write_job "error" 100 "Failed" "$t0" 0 "Filesystem resize failed on $part"; return 1;
+    fi
+    write_job "done" 100 "Completed" "$t0" 0 "Resized $part successfully"
 }
 
 run_delete_job() {
