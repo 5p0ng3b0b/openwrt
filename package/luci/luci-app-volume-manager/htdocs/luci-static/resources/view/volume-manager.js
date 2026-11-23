@@ -240,13 +240,27 @@ openCreateModal: function(diskObj, seg, existingLayout) {
         });
 
         var hatchBg = 'repeating-linear-gradient(45deg, rgba(128,128,128,0.14), rgba(128,128,128,0.14) 8px, rgba(128,128,128,0.24) 8px, rgba(128,128,128,0.24) 16px)';
-        var segPre = E('div', { 'style': 'height:100%; background:' + hatchBg + '; transition:flex 0.15s;' });
-        var segNew = E('div', { 'style': 'height:100%; background:#2e7d32; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; overflow:hidden; white-space:nowrap; transition:flex 0.15s;' });
-        var segPost = E('div', { 'style': 'height:100%; background:' + hatchBg + '; transition:flex 0.15s;' });
+        var segPre = E('div', { 'style': 'height:100%; background:' + hatchBg + ';' });
+        var handleLeft = E('div', {
+            'title': _('Drag left edge to adjust start offset'),
+            'style': 'width:10px; height:100%; background:rgba(255,255,255,0.35); cursor:ew-resize; flex:0 0 10px;'
+        });
+        var segCenter = E('div', {
+            'title': _('Drag partition to slide position'),
+            'style': 'flex:1 1 auto; height:100%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; overflow:hidden; white-space:nowrap; cursor:grab; padding:0 4px;'
+        });
+        var handleRight = E('div', {
+            'title': _('Drag right edge to resize partition'),
+            'style': 'width:10px; height:100%; background:rgba(255,255,255,0.35); cursor:ew-resize; flex:0 0 10px;'
+        });
+        var segNew = E('div', {
+            'style': 'height:100%; min-width:28px; background:#2e7d32; color:#fff; display:flex; align-items:stretch; overflow:hidden;'
+        }, [ handleLeft, segCenter, handleRight ]);
+        var segPost = E('div', { 'style': 'height:100%; background:' + hatchBg + ';' });
         var previewBar = E('div', {
-            'style': 'display:flex; width:100%; height:42px; border-radius:6px; overflow:hidden; border:1px solid rgba(128,128,128,0.4); margin-bottom:12px; background:rgba(0,0,0,0.2);'
+            'style': 'display:flex; width:100%; height:44px; border-radius:6px; overflow:hidden; border:1px solid rgba(128,128,128,0.45); margin-bottom:12px; background:rgba(0,0,0,0.2); user-select:none; touch-action:none;'
         }, [ segPre, segNew, segPost ]);
-        var preSlider = E('input', { 'type': 'range', 'min': '0', 'max': String(Math.max(0, maxMiB - 1)), 'value': '0', 'style': 'width:100%;' });
+
         var preNumIn = E('input', { 'type': 'number', 'class': 'cbi-input-text', 'min': '0', 'step': 'any', 'value': '0', 'style': 'width:130px;' });
         var preUnitSel = E('select', { 'class': 'cbi-input-select', 'style': 'width:95px;' }, [
             E('option', { 'value': 'MiB', 'selected': 'selected' }, 'MiB'),
@@ -254,7 +268,6 @@ openCreateModal: function(diskObj, seg, existingLayout) {
             E('option', { 'value': 'TiB' }, 'TiB'),
             E('option', { 'value': 'pct' }, '%')
         ]);
-        var sizeSlider = E('input', { 'type': 'range', 'min': '1', 'max': String(maxMiB), 'value': String(maxMiB), 'style': 'width:100%;' });
         var numIn = E('input', { 'type': 'number', 'class': 'cbi-input-text', 'min': '1', 'step': 'any', 'value': String((maxMiB / 1024).toFixed(2)), 'style': 'width:130px;', 'disabled': true });
         var unitSel = E('select', { 'class': 'cbi-input-select', 'style': 'width:95px;' }, [
             E('option', { 'value': 'max', 'selected': 'selected' }, 'Max'),
@@ -287,30 +300,47 @@ openCreateModal: function(diskObj, seg, existingLayout) {
             preMiB = Math.max(0, Math.min(maxMiB - 1, Math.round(preMiB)));
             sizeMiB = Math.max(1, Math.min(maxMiB - preMiB, Math.round(sizeMiB)));
             var postMiB = Math.max(0, maxMiB - preMiB - sizeMiB);
-            preSlider.max = String(Math.max(0, maxMiB - 1));
-            preSlider.value = String(preMiB);
-            sizeSlider.max = String(Math.max(1, maxMiB - preMiB));
-            sizeSlider.value = String(sizeMiB);
             segPre.style.flex = preMiB + ' 1 0';
             segNew.style.flex = sizeMiB + ' 1 0';
             segPost.style.flex = postMiB + ' 1 0';
             segNew.style.background = FS_COLORS[fsSel.value] || '#455a64';
-            segNew.textContent = (sizeMiB >= 1024 ? (sizeMiB / 1024).toFixed(1) + ' GiB' : sizeMiB + ' MiB');
+            segCenter.textContent = (sizeMiB >= 1024 ? (sizeMiB / 1024).toFixed(1) + ' GiB' : sizeMiB + ' MiB');
             postLabel.textContent = postMiB + ' MiB (' + (postMiB / 1024).toFixed(2) + ' GiB)';
         };
 
-        var applyPreChange = function() {
-            if (unitSel.value === 'max') sizeMiB = maxMiB - preMiB;
-            else if (preMiB + sizeMiB > maxMiB) sizeMiB = maxMiB - preMiB;
-            syncNumFromMiB();
-            updatePreview();
+        var startDrag = function(mode, ev) {
+            ev.preventDefault();
+            var startX = ev.clientX;
+            var initPre = preMiB;
+            var initSize = sizeMiB;
+            var barW = previewBar.getBoundingClientRect().width || 1;
+            var onMove = function(mv) {
+                var deltaMiB = Math.round(((mv.clientX - startX) / barW) * maxMiB);
+                if (unitSel.value === 'max') unitSel.value = 'GiB';
+                if (mode === 'move') {
+                    preMiB = Math.max(0, Math.min(maxMiB - initSize, initPre + deltaMiB));
+                } else if (mode === 'left') {
+                    var rightEdge = initPre + initSize;
+                    preMiB = Math.max(0, Math.min(rightEdge - 1, initPre + deltaMiB));
+                    sizeMiB = rightEdge - preMiB;
+                } else if (mode === 'right') {
+                    sizeMiB = Math.max(1, Math.min(maxMiB - initPre, initSize + deltaMiB));
+                }
+                syncPreFromMiB();
+                syncNumFromMiB();
+                updatePreview();
+            };
+            var onUp = function() {
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+            };
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
         };
+        handleLeft.addEventListener('pointerdown', function(e) { startDrag('left', e); });
+        segCenter.addEventListener('pointerdown', function(e) { startDrag('move', e); });
+        handleRight.addEventListener('pointerdown', function(e) { startDrag('right', e); });
 
-        preSlider.addEventListener('input', function() {
-            preMiB = Number(preSlider.value) || 0;
-            syncPreFromMiB();
-            applyPreChange();
-        });
         preUnitSel.addEventListener('change', function() { syncPreFromMiB(); });
         preNumIn.addEventListener('input', function() {
             var v = parseFloat(preNumIn.value) || 0;
@@ -319,11 +349,8 @@ openCreateModal: function(diskObj, seg, existingLayout) {
             else if (u === 'TiB') preMiB = v * 1048576;
             else if (u === 'pct') preMiB = (v / 100) * maxMiB;
             else preMiB = v;
-            applyPreChange();
-        });
-        sizeSlider.addEventListener('input', function() {
-            if (unitSel.value === 'max') unitSel.value = 'GiB';
-            sizeMiB = Number(sizeSlider.value) || 1;
+            if (unitSel.value === 'max') sizeMiB = maxMiB - preMiB;
+            else if (preMiB + sizeMiB > maxMiB) sizeMiB = maxMiB - preMiB;
             syncNumFromMiB();
             updatePreview();
         });
@@ -352,12 +379,11 @@ openCreateModal: function(diskObj, seg, existingLayout) {
                 E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Type')), E('div', { 'class': 'cbi-value-field' }, [ ptypeSel ]) ]),
                 E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Filesystem')), E('div', { 'class': 'cbi-value-field' }, [ fsSel ]) ]),
                 E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Type ID')), E('div', { 'class': 'cbi-value-field' }, [ roleSel ]) ]),
-                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Free Space Preceding')), E('div', { 'class': 'cbi-value-field' }, [ preSlider, E('div', { 'style': 'display:flex; gap:8px; align-items:center; margin-top:6px;' }, [ preNumIn, preUnitSel ]) ]) ]),
+                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Free Space Preceding')), E('div', { 'class': 'cbi-value-field' }, [ E('div', { 'style': 'display:flex; gap:8px; align-items:center;' }, [ preNumIn, preUnitSel ]) ]) ]),
                 E('div', { 'class': 'cbi-value' }, [
                     E('label', { 'class': 'cbi-value-title' }, _('New Size (max %d MiB)').format(maxMiB)),
                     E('div', { 'class': 'cbi-value-field' }, [
-                        sizeSlider,
-                        E('div', { 'style': 'display:flex; gap:8px; align-items:center; margin-top:6px;' }, [ numIn, unitSel ])
+                        E('div', { 'style': 'display:flex; gap:8px; align-items:center;' }, [ numIn, unitSel ])
                     ])
                 ]),
                 E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Free Space Following')), E('div', { 'class': 'cbi-value-field' }, [ postLabel ]) ]),
