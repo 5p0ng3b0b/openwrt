@@ -276,24 +276,35 @@ openCreateModal: function(diskObj, seg, existingLayout) {
             E('option', { 'value': 'TiB' }, 'TiB'),
             E('option', { 'value': 'pct' }, '%')
         ]);
-        var postLabel = E('span', { 'style': 'font-size:12px; opacity:0.85;' }, '0 MiB');
+        var postNumIn = E('input', { 'type': 'number', 'class': 'cbi-input-text', 'min': '0', 'step': 'any', 'value': '0', 'style': 'width:130px;' });
+        var postUnitSel = E('select', { 'class': 'cbi-input-select', 'style': 'width:95px;' }, [
+            E('option', { 'value': 'MiB', 'selected': 'selected' }, 'MiB'),
+            E('option', { 'value': 'GiB' }, 'GiB'),
+            E('option', { 'value': 'TiB' }, 'TiB'),
+            E('option', { 'value': 'pct' }, '%')
+        ]);
 
-        var syncPreFromMiB = function() {
-            var u = preUnitSel.value;
-            if (u === 'GiB') preNumIn.value = (preMiB / 1024).toFixed(2);
-            else if (u === 'TiB') preNumIn.value = (preMiB / 1048576).toFixed(3);
-            else if (u === 'pct') preNumIn.value = Math.round((preMiB / maxMiB) * 100);
-            else preNumIn.value = Math.round(preMiB);
+        var fmtUnitVal = function(mib, u) {
+            if (u === 'GiB') return (mib / 1024).toFixed(2);
+            if (u === 'TiB') return (mib / 1048576).toFixed(3);
+            if (u === 'pct') return Math.round((mib / maxMiB) * 100);
+            return Math.round(mib);
         };
 
+        var parseUnitVal = function(val, u) {
+            var v = parseFloat(val) || 0;
+            if (u === 'GiB') return v * 1024;
+            if (u === 'TiB') return v * 1048576;
+            if (u === 'pct') return (v / 100) * maxMiB;
+            return v;
+        };
+
+        var syncPreFromMiB = function() { preNumIn.value = fmtUnitVal(preMiB, preUnitSel.value); };
+        var syncPostFromMiB = function(postMiB) { postNumIn.value = fmtUnitVal(postMiB, postUnitSel.value); };
         var syncNumFromMiB = function() {
             var u = unitSel.value;
             numIn.disabled = (u === 'max');
-            if (u === 'max') numIn.value = ((maxMiB - preMiB) / 1024).toFixed(2);
-            else if (u === 'GiB') numIn.value = (sizeMiB / 1024).toFixed(2);
-            else if (u === 'TiB') numIn.value = (sizeMiB / 1048576).toFixed(3);
-            else if (u === 'pct') numIn.value = Math.round((sizeMiB / maxMiB) * 100);
-            else numIn.value = Math.round(sizeMiB);
+            numIn.value = (u === 'max') ? ((maxMiB - preMiB) / 1024).toFixed(2) : fmtUnitVal(sizeMiB, u);
         };
 
         var updatePreview = function() {
@@ -305,7 +316,7 @@ openCreateModal: function(diskObj, seg, existingLayout) {
             segPost.style.flex = postMiB + ' 1 0';
             segNew.style.background = FS_COLORS[fsSel.value] || '#455a64';
             segCenter.textContent = (sizeMiB >= 1024 ? (sizeMiB / 1024).toFixed(1) + ' GiB' : sizeMiB + ' MiB');
-            postLabel.textContent = postMiB + ' MiB (' + (postMiB / 1024).toFixed(2) + ' GiB)';
+            syncPostFromMiB(postMiB);
         };
 
         var startDrag = function(mode, ev) {
@@ -341,14 +352,9 @@ openCreateModal: function(diskObj, seg, existingLayout) {
         segCenter.addEventListener('pointerdown', function(e) { startDrag('move', e); });
         handleRight.addEventListener('pointerdown', function(e) { startDrag('right', e); });
 
-        preUnitSel.addEventListener('change', function() { syncPreFromMiB(); });
+        preUnitSel.addEventListener('change', syncPreFromMiB);
         preNumIn.addEventListener('input', function() {
-            var v = parseFloat(preNumIn.value) || 0;
-            var u = preUnitSel.value;
-            if (u === 'GiB') preMiB = v * 1024;
-            else if (u === 'TiB') preMiB = v * 1048576;
-            else if (u === 'pct') preMiB = (v / 100) * maxMiB;
-            else preMiB = v;
+            preMiB = parseUnitVal(preNumIn.value, preUnitSel.value);
             if (unitSel.value === 'max') sizeMiB = maxMiB - preMiB;
             else if (preMiB + sizeMiB > maxMiB) sizeMiB = maxMiB - preMiB;
             syncNumFromMiB();
@@ -360,12 +366,19 @@ openCreateModal: function(diskObj, seg, existingLayout) {
             updatePreview();
         });
         numIn.addEventListener('input', function() {
-            var v = parseFloat(numIn.value) || 0;
-            var u = unitSel.value;
-            if (u === 'GiB') sizeMiB = v * 1024;
-            else if (u === 'TiB') sizeMiB = v * 1048576;
-            else if (u === 'pct') sizeMiB = (v / 100) * maxMiB;
-            else sizeMiB = v;
+            sizeMiB = parseUnitVal(numIn.value, unitSel.value);
+            updatePreview();
+        });
+        postUnitSel.addEventListener('change', function() {
+            syncPostFromMiB(Math.max(0, maxMiB - preMiB - sizeMiB));
+        });
+        postNumIn.addEventListener('input', function() {
+            var wantPost = Math.max(0, Math.min(maxMiB - 1, Math.round(parseUnitVal(postNumIn.value, postUnitSel.value))));
+            if (unitSel.value === 'max') unitSel.value = 'GiB';
+            if (preMiB + wantPost >= maxMiB) preMiB = Math.max(0, maxMiB - wantPost - 1);
+            sizeMiB = Math.max(1, maxMiB - preMiB - wantPost);
+            syncPreFromMiB();
+            syncNumFromMiB();
             updatePreview();
         });
         updatePreview();
@@ -386,7 +399,7 @@ openCreateModal: function(diskObj, seg, existingLayout) {
                         E('div', { 'style': 'display:flex; gap:8px; align-items:center;' }, [ numIn, unitSel ])
                     ])
                 ]),
-                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Free Space Following')), E('div', { 'class': 'cbi-value-field' }, [ postLabel ]) ]),
+                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Free Space Following')), E('div', { 'class': 'cbi-value-field' }, [ E('div', { 'style': 'display:flex; gap:8px; align-items:center;' }, [ postNumIn, postUnitSel ]) ]) ]),
                 E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Label')), E('div', { 'class': 'cbi-value-field' }, [ labelInput ]) ])
             ]),
             E('div', { 'class': 'right' }, [
