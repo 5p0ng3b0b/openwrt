@@ -13,6 +13,7 @@ var callJobStatus = rpc.declare({ object: 'volmgr', method: 'job_status', expect
 var callCreatePart = rpc.declare({ object: 'volmgr', method: 'create_part', params: ['disk', 'layout', 'ptype', 'fstype', 'size', 'label', 'role', 'offset_mib'], expect: {} });
 var callFormatPart = rpc.declare({ object: 'volmgr', method: 'format_part', params: ['part', 'fstype', 'label'], expect: {} });
 var callResizePart = rpc.declare({ object: 'volmgr', method: 'resize_part', params: ['disk', 'num', 'size', 'fstype'], expect: {} });
+var callMovePart = rpc.declare({ object: 'volmgr', method: 'move_part', params: ['disk', 'num', 'delta_mib', 'fstype'], expect: {} });
 var callDeletePart = rpc.declare({ object: 'volmgr', method: 'delete_part', params: ['disk', 'num'], expect: {} });
 var callSetMeta = rpc.declare({ object: 'volmgr', method: 'set_part_meta', params: ['disk', 'num', 'label', 'fstype', 'role', 'flags'], expect: {} });
 var callMountAct = rpc.declare({ object: 'volmgr', method: 'mount_action', params: ['action', 'part', 'target'], expect: {} });
@@ -99,10 +100,15 @@ segs.push({ kind: 'free', name: 'Unallocated', size: (lastLba - cursor + 1) * se
 }
 } else {
 if (parts.length > 0) {
-            var used = 0;
-            parts.forEach(function(child, idx) {
+            var lbs = Number((infoRes && infoRes.logical_bs) || 512);
+            var sorted = parts.slice().sort(function(a, b) { return (Number(a.start) || 0) - (Number(b.start) || 0); });
+            var cursor = 1048576;
+            sorted.forEach(function(child, idx) {
                 var sz = Number(child.size) || 0;
-                used += sz;
+                var stBytes = (child.start != null) ? (Number(child.start) * lbs) : cursor;
+                if (stBytes - cursor > 1048576) {
+                    segs.push({ kind: 'free', name: 'Unallocated', size: stBytes - cursor });
+                }
                 var pnum = Number((child.name || '').replace(/^.*[^0-9]/, '')) || (idx + 1);
                 segs.push({
                     kind: 'part', num: pnum,
@@ -112,13 +118,14 @@ if (parts.length > 0) {
                     fstype: child.fstype || '',
                     label: child.label || '',
                     uuid: child.uuid || '',
-                    parttype: child.parttypename || '',
+                    parttype: child.parttypename || '', rawparttype: child.parttype || '',
                     flags: child.partflags || '',
                     mountpoint: child.mountpoint || ''
                 });
+                cursor = stBytes + sz;
             });
-            if (totalBytes - used > 1048576) {
-                segs.push({ kind: 'free', name: 'Unallocated', size: totalBytes - used });
+            if (totalBytes - cursor > 1048576) {
+                segs.push({ kind: 'free', name: 'Unallocated', size: totalBytes - cursor });
             }
         } else {
             segs.push({ kind: 'free', name: 'Unallocated (No partition table)', size: totalBytes });
@@ -585,11 +592,106 @@ openResizeModal: function(diskObj, seg) {
         ]);
     },
 
+    openMoveModal: function(diskObj, seg) {
+        var self = this;
+        var segs = this.buildSegments(diskObj, this.diskInfo);
+        var idx = segs.findIndex(function(x) { return x.node === seg.node; });
+        var prevSeg = (idx > 0) ? segs.at(idx - 1) : null;
+        var nextSeg = (idx >= 0 && idx + 1 < segs.length) ? segs.at(idx + 1) : null;
+        var initPreMiB = (prevSeg && prevSeg.kind === 'free') ? Math.max(0, Math.floor((Number(prevSeg.size) || 0) / (1024 * 1024))) : 0;
+        var initPostMiB = (nextSeg && nextSeg.kind === 'free') ? Math.max(0, Math.floor((Number(nextSeg.size) || 0) / (1024 * 1024))) : 0;
+        var partMiB = Math.max(1, Math.round((Number(seg.size) || 0) / (1024 * 1024)));
+        var maxOffsetMiB = initPreMiB + initPostMiB;
+        var totalSpanMiB = maxOffsetMiB + partMiB;
+        var preMiB = initPreMiB;
+
+        var hatchBg = 'repeating-linear-gradient(45deg, rgba(128,128,128,0.14), rgba(128,128,128,0.14) 8px, rgba(128,128,128,0.24) 8px, rgba(128,128,128,0.24) 16px)';
+        var segPre = E('div', { 'style': 'height:100%; background:' + hatchBg + ';' });
+        var segCenter = E('div', {
+            'title': _('Drag partition left or right'),
+            'style': 'height:100%; min-width:36px; background:' + (FS_COLORS[seg.fstype] || '#455a64') + '; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; overflow:hidden; white-space:nowrap; cursor:grab; padding:0 8px;'
+        });
+        var segPost = E('div', { 'style': 'height:100%; background:' + hatchBg + ';' });
+        var previewBar = E('div', {
+            'style': 'display:flex; width:100%; height:44px; border-radius:6px; overflow:hidden; border:1px solid rgba(128,128,128,0.45); margin-bottom:12px; background:rgba(0,0,0,0.2); user-select:none; touch-action:none;'
+        }, [ segPre, segCenter, segPost ]);
+        var preNumIn = E('input', { 'type': 'number', 'class': 'cbi-input-text', 'min': '0', 'step': 'any', 'value': String(preMiB), 'style': 'width:130px;' });
+        var preUnitSel = E('select', { 'class': 'cbi-input-select', 'style': 'width:95px;' }, [
+            E('option', { 'value': 'MiB', 'selected': 'selected' }, 'MiB'),
+            E('option', { 'value': 'GiB' }, 'GiB'),
+            E('option', { 'value': 'TiB' }, 'TiB')
+        ]);
+        var postNumIn = E('input', { 'type': 'number', 'class': 'cbi-input-text', 'min': '0', 'step': 'any', 'value': String(initPostMiB), 'style': 'width:130px;' });
+        var postUnitSel = E('select', { 'class': 'cbi-input-select', 'style': 'width:95px;' }, [
+            E('option', { 'value': 'MiB', 'selected': 'selected' }, 'MiB'),
+            E('option', { 'value': 'GiB' }, 'GiB'),
+            E('option', { 'value': 'TiB' }, 'TiB')
+        ]);
+
+        var fmtV = function(mib, u) { return u === 'GiB' ? (mib / 1024).toFixed(2) : (u === 'TiB' ? (mib / 1048576).toFixed(3) : Math.round(mib)); };
+        var parseV = function(val, u) { var v = parseFloat(val) || 0; return u === 'GiB' ? v * 1024 : (u === 'TiB' ? v * 1048576 : v); };
+
+        var syncBoxes = function() {
+            preNumIn.value = fmtV(preMiB, preUnitSel.value);
+            postNumIn.value = fmtV(Math.max(0, maxOffsetMiB - preMiB), postUnitSel.value);
+        };
+        var updatePreview = function() {
+            preMiB = Math.max(0, Math.min(maxOffsetMiB, Math.round(preMiB)));
+            var postMiB = Math.max(0, maxOffsetMiB - preMiB);
+            segPre.style.flex = preMiB + ' 1 0';
+            segCenter.style.flex = partMiB + ' 1 0';
+            segPost.style.flex = postMiB + ' 1 0';
+            var shift = preMiB - initPreMiB;
+            var tag = shift !== 0 ? (' (' + (shift > 0 ? '+' : '') + (Math.abs(shift) >= 1024 ? (shift / 1024).toFixed(1) + ' GiB' : shift + ' MiB') + ')') : '';
+            segCenter.textContent = (partMiB >= 1024 ? (partMiB / 1024).toFixed(1) + ' GiB' : partMiB + ' MiB') + tag;
+        };
+
+        segCenter.addEventListener('pointerdown', function(ev) {
+            ev.preventDefault();
+            var startX = ev.clientX, initP = preMiB, barW = previewBar.getBoundingClientRect().width || 1;
+            var onMove = function(mv) {
+                preMiB = Math.max(0, Math.min(maxOffsetMiB, initP + Math.round(((mv.clientX - startX) / barW) * totalSpanMiB)));
+                syncBoxes(); updatePreview();
+            };
+            var onUp = function() { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+        });
+        preUnitSel.addEventListener('change', syncBoxes);
+        postUnitSel.addEventListener('change', syncBoxes);
+        preNumIn.addEventListener('input', function() { preMiB = parseV(preNumIn.value, preUnitSel.value); postNumIn.value = fmtV(Math.max(0, maxOffsetMiB - Math.round(preMiB)), postUnitSel.value); updatePreview(); });
+        postNumIn.addEventListener('input', function() { var wp = Math.max(0, Math.min(maxOffsetMiB, Math.round(parseV(postNumIn.value, postUnitSel.value)))); preMiB = maxOffsetMiB - wp; preNumIn.value = fmtV(preMiB, preUnitSel.value); updatePreview(); });
+        updatePreview();
+
+        ui.showModal(_('Move Partition %s').format(seg.node), [
+            E('p', { 'style': 'color:#ef6c00; font-weight:600;' }, _('Warning: Moving relocates data sectors on disk. Do not power off or interrupt until complete.')),
+            previewBar,
+            E('div', { 'class': 'cbi-section' }, [
+                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Free Space Preceding')), E('div', { 'class': 'cbi-value-field' }, [ E('div', { 'style': 'display:flex; gap:8px; align-items:center;' }, [ preNumIn, preUnitSel ]) ]) ]),
+                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Free Space Following')), E('div', { 'class': 'cbi-value-field' }, [ E('div', { 'style': 'display:flex; gap:8px; align-items:center;' }, [ postNumIn, postUnitSel ]) ]) ])
+            ]),
+            E('div', { 'class': 'right' }, [
+                E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')), ' ',
+                E('button', {
+                    'class': 'btn cbi-button-apply important',
+                    'click': function() {
+                        var deltaMiB = Math.round(preMiB) - initPreMiB;
+                        if (deltaMiB === 0) { ui.hideModal(); return; }
+                        self.runWithProgress(_('Moving %s').format(seg.node),
+                            callMovePart('/dev/' + diskObj.name, seg.num, deltaMiB, seg.fstype || ''),
+                            function() { self.refreshAll(); }
+                        );
+                    }
+                }, _('Move'))
+            ])
+        ]);
+    },
+
     openMetaModal: function(diskObj, seg, existingLayout) {
 var self = this;
 var lblIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': seg.label || '' });
 var roleSel = E('select', { 'class': 'cbi-input-select' }, [
-E('option', { 'value': '' }, _('(Keep current Type ID)')),
+E('option', { 'value': '' }, _('(Keep current: %s)').format((seg.parttype || _('Unknown')) + (seg.rawparttype ? (' [' + seg.rawparttype + ']') : ''))),
 E('option', { 'value': 'linux' }, 'Linux Filesystem (0FC63DAF / 0x83)'),
 E('option', { 'value': 'raid' }, 'Linux RAID Member (A19D880F / 0xFD)'),
 E('option', { 'value': 'lvm' }, 'Linux LVM PV (E6D6D379 / 0x8E)'),
@@ -725,7 +827,8 @@ var cur = this.selectedItem, isFree = cur && cur.kind === 'free', isPart = cur &
 var toolbar = E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;' }, [
 E('button', { 'class': 'btn cbi-button-apply important', 'disabled': !isFree ? true : null, 'click': function() { if (isFree) self.openCreateModal(disk, cur, existingLayout); } }, _('Create Partition')),
 E('button', { 'class': 'btn cbi-button-action', 'disabled': !(isPart && self.canResize(cur.fstype)) ? true : null, 'title': (isPart && !self.canResize(cur.fstype)) ? _('Resize unavailable for this filesystem or missing resize tool in Config tab') : '', 'click': function() { if (isPart && self.canResize(cur.fstype)) self.openResizeModal(disk, cur); } }, _('Resize / Extend')),
-E('button', { 'class': 'btn cbi-button-action', 'disabled': !isPart ? true : null, 'click': function() { if (isPart) self.openFormatModal(cur); } }, _('Format')),
+E('button', { 'class': 'btn cbi-button-action', 'disabled': !isPart ? true : null, 'click': function() { if (isPart) self.openMoveModal(disk, cur); } }, _('Move')),
+            E('button', { 'class': 'btn cbi-button-action', 'disabled': !isPart ? true : null, 'click': function() { if (isPart) self.openFormatModal(cur); } }, _('Format')),
 E('button', { 'class': 'btn cbi-button-action', 'disabled': !isPart ? true : null, 'click': function() { if (isPart) self.openMetaModal(disk, cur, existingLayout); } }, _('Label / Type / Flags')),
 E('button', {
 'class': 'btn', 'disabled': !isPart ? true : null,
