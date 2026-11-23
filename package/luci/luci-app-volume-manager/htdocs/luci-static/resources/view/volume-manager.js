@@ -640,7 +640,7 @@ var self = this;
 var groups = [
 {
 title: 'Filesystems (Format & Mount)',
-desc: 'Green = installed & ready; dim = click to install on demand via apk.',
+desc: 'Kernel drivers and userspace tools for formatting, checking, and mounting filesystems.',
 items: [
 { label: 'Ext4 / Resize2fs', pkgs: 'kmod-fs-ext4 e2fsprogs resize2fs' },
 { label: 'Btrfs', pkgs: 'kmod-fs-btrfs btrfs-progs' },
@@ -671,7 +671,7 @@ items: [
 ]
 },
 {
-title: 'Advanced Storage title: 'Volumes & Backup', Replication',
+title: 'Advanced Storage & Replication',
 desc: 'Packages for RAID, LVM, LUKS encryption, iSCSI, and rsync jobs.',
 items: [
 { label: 'Software RAID (mdadm)', pkgs: 'mdadm' },
@@ -683,17 +683,38 @@ items: [
 }
 ];
 
-return E('div', { 'style': 'display:grid; grid-template-columns:repeat(2, minmax(320px, 1fr)); gap:14px;' }, groups.map(function(g) {
+var swatch = function(bg, text) {
+            return E('span', { 'style': 'display:inline-flex; align-items:center; gap:6px;' }, [
+                E('span', { 'style': 'display:inline-block; width:12px; height:12px; border-radius:3px; background:' + bg + ';' }),
+                text
+            ]);
+        };
+        var legend = E('div', {
+            'style': 'display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:8px 14px; margin-bottom:14px; border-radius:6px; background:var(--background-color-medium, rgba(255,255,255,0.03)); border:1px solid var(--border-color-medium, rgba(128,128,128,0.25)); font-size:12px;'
+        }, [
+            E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:16px;' }, [
+                swatch('#2e7d32', _('Full support (installed)')),
+                swatch('#00695c', _('Partial / mount-only (click to add tools)')),
+                swatch('rgba(128,128,128,0.35)', _('Not installed (click to install)'))
+            ]),
+            E('span', { 'style': 'opacity:0.75;' }, _('Click any badge to install or remove via apk'))
+        ]);
+        var grid = E('div', { 'style': 'display:grid; grid-template-columns:repeat(2, minmax(320px, 1fr)); gap:14px;' }, groups.map(function(g) {
 return E('div', {
 'style': 'padding:14px 16px; border-radius:6px; background:var(--background-color-medium, rgba(255,255,255,0.03)); border:1px solid var(--border-color-medium, rgba(128,128,128,0.25));'
 }, [
 E('h4', { 'style': 'margin:0 0 4px 0;' }, _(g.title)),
 E('div', { 'style': 'font-size:12px; opacity:0.75; margin-bottom:12px;' }, _(g.desc)),
 E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:8px;' }, g.items.map(function(it) {
-var allOk = it.pkgs.split(' ').every(function(p) { return self.isInstalled(p); });
+var pkgList = it.pkgs.split(' ');
+var allOk = pkgList.every(function(p) { return self.isInstalled(p); });
+var anyOk = pkgList.some(function(p) { return self.isInstalled(p); });
+var btnStyle = allOk
+    ? 'background:#2e7d32; color:#fff; border-color:#2e7d32; font-weight:600;'
+    : (anyOk ? 'background:#00695c; color:#fff; border-color:#00695c; font-weight:600;' : 'background:rgba(128,128,128,0.12); color:inherit; opacity:0.65;');
 return E('button', {
 'type': 'button', 'class': 'btn',
-'style': allOk ? 'background:#2e7d32; color:#fff; border-color:#2e7d32; font-weight:600;' : 'background:rgba(128,128,128,0.12); color:inherit; opacity:0.65;',
+'style': btnStyle,
 'click': function() {
 ui.showModal(it.label, [
 E('p', {}, _('Packages: ') + it.pkgs),
@@ -712,9 +733,10 @@ self.runWithProgress(_('Installing %s').format(it.label), callPkgAct('add', it.p
 }))
 ]);
 }));
-},
+        return E('div', {}, [ legend, grid ]);
+    },
 
-activeTab: 'disk',
+    activeTab: 'disk',
 rootNode: null,
 
 renderMain: function() {
