@@ -991,19 +991,32 @@ E('table', { 'class': 'table cbi-section-table' }, rows)
 ]);
 },
 
-renderInfoTab: function() {
+    smartAttrName: function(a) {
+        var n = (a && a.name) || '';
+        if (n && n.indexOf('Unknown_') !== 0) return n;
+        var map = {
+            171: 'Program_Fail_Count', 172: 'Erase_Fail_Count', 173: 'Ave_Block_Erase_Count',
+            174: 'Unexpect_Power_Loss_Ct', 180: 'Unused_Rsvd_Blk_Cnt_Tot', 183: 'SATA_Interfac_Downshift',
+            202: 'Percent_Lifetime_Remain', 206: 'Write_Error_Rate', 210: 'Success_RAIN_Recov_Cnt',
+            231: 'SSD_Life_Left', 233: 'Media_Wearout_Indicator', 246: 'Total_LBAs_Written',
+            247: 'Host_Program_Page_Count', 248: 'FTL_Program_Page_Count'
+        };
+        return (a && map[a.id]) || n || ('Attribute_' + (a ? a.id : '?'));
+    },
+
+    renderInfoTab: function() {
         if (!this.disks.length) return E('p', {}, _('No storage disks detected.'));
         var disk = this.getCurDisk();
         var sm = (this.smartInfo && this.smartInfo.smart) || {};
         var isSsd = (this.diskInfo.rotational === '0') || (sm.rotation_rate === 0);
-        var sataSpd = (sm.sata_version && sm.sata_version.current && sm.sata_version.current.string)
-            ? ('SATA (' + sm.sata_version.current.string + ')') : '';
+        var rawSata = (sm.sata_version && sm.sata_version.current && sm.sata_version.current.string) || (this.diskInfo.sata_speed && this.diskInfo.sata_speed !== '<unknown>' ? this.diskInfo.sata_speed : '');
+        var sataSpd = rawSata ? ('SATA (' + rawSata + ')') : '';
         var linkSpd = sataSpd || this.diskInfo.usb_speed || (disk.tran || 'Standard').toUpperCase();
         var attrs = (sm.ata_smart_attributes && sm.ata_smart_attributes.table) || [];
         var wearAttr = attrs.find(function(a) { return a.id === 202 || a.id === 231 || a.id === 233 || a.id === 177; });
         var wearPct = (sm.nvme_smart_health_information_log && sm.nvme_smart_health_information_log.percentage_used != null)
             ? (100 - sm.nvme_smart_health_information_log.percentage_used) + '% remaining'
-            : (wearAttr ? (wearAttr.value + '% remaining (' + wearAttr.name + ')') : 'See S.M.A.R.T. table below');
+            : (wearAttr ? (wearAttr.value + '% remaining') : 'See S.M.A.R.T. table below');
 
         var cards = [
             { k: 'Model', v: sm.model_name || disk.model || 'Unknown' },

@@ -449,7 +449,13 @@ rota=$(cat "/sys/block/$bn/queue/rotational" 2>/dev/null || echo "1")
 lbs=$(cat "/sys/block/$bn/queue/logical_block_size" 2>/dev/null || echo "512")
 pbs=$(cat "/sys/block/$bn/queue/physical_block_size" 2>/dev/null || echo "512")
 sched=$(cat "/sys/block/$bn/queue/scheduler" 2>/dev/null || echo "")
-usb_spd=""
+sata_spd=""
+        ata_p=$(readlink -f "/sys/block/$bn" 2>/dev/null | sed -n 's#.*\(/ata[0-9]\+\).*#\1#p')
+        if [ -n "$ata_p" ]; then
+            lk=$(basename "$ata_p" | sed 's/ata/link/')
+            [ -f "/sys/class/ata_link/$lk/sata_spd" ] && sata_spd=$(cat "/sys/class/ata_link/$lk/sata_spd" 2>/dev/null)
+        fi
+        usb_spd=""
 if readlink -f "/sys/block/$bn" 2>/dev/null | grep -q "/usb"; then
 usb_dir=$(readlink -f "/sys/block/$bn" | sed -E 's#(/usb[0-9]+/[0-9-]+).*#\1#')
 [ -f "$usb_dir/speed" ] && usb_spd="$(cat "$usb_dir/speed") Mbps"
@@ -460,7 +466,8 @@ json_add_string "rotational" "$rota"
 json_add_string "logical_bs" "$lbs"
 json_add_string "physical_bs" "$pbs"
 json_add_string "scheduler" "$sched"
-json_add_string "usb_speed" "$usb_spd"
+json_add_string "sata_speed" "$sata_spd"
+        json_add_string "usb_speed" "$usb_spd"
 json_add_string "free_raw" "$free_out"
 json_dump | sed "s/}\$/,\"sfdisk\":${sfd}}/"
 ;;
