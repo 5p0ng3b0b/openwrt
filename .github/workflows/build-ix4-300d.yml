@@ -87,6 +87,8 @@ jobs:
             CONFIG_ALL_KMODS=y \
             CONFIG_PACKAGE_kmod-crypto-marvell=m \
             CONFIG_PACKAGE_kmod-fs-ntfs3=m \
+            CONFIG_PACKAGE_kmod-usb-storage-uas=m \
+            CONFIG_PACKAGE_kmod-nvme=m \
             CONFIG_PACKAGE_kmod-fs-xfs=m \
             CONFIG_PACKAGE_kmod-fs-exfat=m \
             CONFIG_PACKAGE_kmod-fs-vfat=m \
