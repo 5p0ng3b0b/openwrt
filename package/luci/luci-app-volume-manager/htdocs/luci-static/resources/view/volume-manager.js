@@ -458,7 +458,7 @@ self.renderMain();
 
     openFormatModal: function(seg) {
         var self = this;
-        var fsSel = this.buildFsSelect(false);
+        var fsSel = this.buildFsSelect(false); if (seg && seg.fstype) { for (var i = 0; i < fsSel.options.length; i++) { if (fsSel.options[i].value === seg.fstype && !fsSel.options[i].disabled) { fsSel.value = seg.fstype; break; } } }
         var labelInput = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': seg.label || '' });
 
 ui.showModal(_('Format %s').format(seg.node), [
@@ -718,10 +718,24 @@ openResizeModal: function(diskObj, seg) {
         ]);
     },
 
+        getLabelPkgStatus: function(fstype) {
+        var map = { ext4: 'tune2fs', ext3: 'tune2fs', ext2: 'tune2fs', vfat: 'dosfstools', fat32: 'dosfstools', ntfs: 'ntfs-3g', exfat: 'exfat-mkfs', btrfs: 'btrfs-progs' };
+        var pkg = map[(fstype || '').toLowerCase()] || '';
+        var ok = pkg ? String(this.installedList || '').indexOf(pkg) !== -1 : false;
+        return { pkg: pkg, installed: ok };
+    },
+
     openMetaModal: function(diskObj, seg, existingLayout) {
 var self = this;
-var lblIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': seg.label || '' });
-var keepOpt = E('option', { 'value': '' }, _('(Keep current: %s)').format((seg.parttype || _('Unknown')) + (seg.rawparttype ? (' [' + seg.rawparttype + ']') : '')));
+var st = this.getLabelPkgStatus(seg.fstype);
+        var lblIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': seg.label || '', 'disabled': !st.installed ? 'disabled' : null });
+        var lblWarn = !st.installed ? E('div', { 'style': 'display:flex; gap:8px; align-items:center; color:#ef6c00; font-size:12px; margin-top:6px;' }, [
+            E('span', {}, st.pkg ? _('Requires %s to edit volume labels.').format(st.pkg) : _('Format partition before setting a volume label.')),
+            st.pkg ? E('button', { 'class': 'btn cbi-button-action', 'click': function() {
+                self.runWithProgress(_('Installing %s').format(st.pkg), callPkgAct('add', st.pkg), function() { self.refreshAll().then(function() { self.openMetaModal(diskObj, seg, existingLayout); }); });
+            } }, _('Install %s').format(st.pkg)) : ''
+        ]) : '';
+        var keepOpt = E('option', { 'value': '' }, _('(Keep current: %s)').format((seg.parttype || _('Unknown')) + (seg.rawparttype ? (' [' + seg.rawparttype + ']') : '')));
         var roleW = this.buildRoleWidget(keepOpt);
                 var fStr = String(seg.flags || '');
         var rType = String(seg.rawparttype || '').toLowerCase();
@@ -733,7 +747,7 @@ var keepOpt = E('option', { 'value': '' }, _('(Keep current: %s)').format((seg.p
         var flagNoAuto = E('input', { 'type': 'checkbox', 'checked': isNoAuto ? 'checked' : null });
 
 ui.showModal(_('Label, Type ID & Flags — %s').format(seg.node), [
-E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Volume Label')), E('div', { 'class': 'cbi-value-field' }, [ lblIn ]) ]),
+E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Volume Label')), E('div', { 'class': 'cbi-value-field' }, [ lblIn, lblWarn ]) ]),
 E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Type ID')), E('div', { 'class': 'cbi-value-field' }, [ roleW.node ]) ]),
 E('div', { 'class': 'cbi-value' }, [
 E('label', { 'class': 'cbi-value-title' }, _('Partition Flags')),
@@ -857,7 +871,7 @@ E('button', { 'class': 'btn cbi-button-apply important', 'disabled': !isFree ? t
 E('button', { 'class': 'btn cbi-button-action', 'disabled': !(isPart && self.canResize(cur.fstype)) ? true : null, 'title': (isPart && !self.canResize(cur.fstype)) ? _('Resize unavailable for this filesystem or missing resize tool in Config tab') : '', 'click': function() { if (isPart && self.canResize(cur.fstype)) self.openResizeModal(disk, cur); } }, _('Resize / Extend')),
 E('button', { 'class': 'btn cbi-button-action', 'disabled': !isPart ? true : null, 'click': function() { if (isPart) self.openMoveModal(disk, cur); } }, _('Move')),
             E('button', { 'class': 'btn cbi-button-action', 'disabled': !isPart ? true : null, 'click': function() { if (isPart) self.openFormatModal(cur); } }, _('Format')),
-E('button', { 'class': 'btn cbi-button-action', 'disabled': !isPart ? true : null, 'click': function() { if (isPart) self.openMetaModal(disk, cur, existingLayout); } }, _('Label / Type / Flags')),
+(function() { var st = isPart ? self.getLabelPkgStatus(cur.fstype) : { pkg: '', installed: true }; var tip = (isPart && !st.installed) ? (st.pkg ? _('Volume label editing requires %s (install in Config tab)').format(st.pkg) : _('Format partition first to edit volume label')) : null; return E('button', { 'title': tip, 'class': 'btn cbi-button-action', 'disabled': !isPart ? true : null, 'click': function() { if (isPart) self.openMetaModal(disk, cur, existingLayout); } }, _('Label / Type / Flags')); })(),
 E('button', {
 'class': 'btn', 'disabled': !isPart ? true : null,
 'click': function() {
@@ -1071,6 +1085,7 @@ renderInfoTab: function() {
         var self = this;
         var items = [
             { v: 'ext4', l: 'ext4 (Linux)' },
+            { v: 'ext2', l: 'ext2 (Linux /boot)' },
             { v: 'btrfs', l: 'btrfs (Linux CoW)' },
             { v: 'f2fs', l: 'f2fs (Flash-Friendly)' },
             { v: 'ntfs', l: 'ntfs (Windows)' },

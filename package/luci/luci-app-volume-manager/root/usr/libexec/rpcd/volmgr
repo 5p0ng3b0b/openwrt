@@ -349,7 +349,10 @@ run_pkg_job() {
         user_only=""
         for p in $pkgs; do
             case "$p" in
-                kmod-fs-ext4) grep -qw ext4 /proc/filesystems && continue ;;
+                kmod-fs-ext2)
+            mkfs.ext2 -F ${label:+-L "$label"} "$part" >> "$LOG_FILE" 2>&1
+            ;;
+        ext4) grep -qw ext4 /proc/filesystems && continue ;;
                 kmod-fs-btrfs) grep -qw btrfs /proc/filesystems && continue ;;
                 kmod-fs-f2fs) grep -qw f2fs /proc/filesystems && continue ;;
                 kmod-fs-ntfs3) grep -qw ntfs3 /proc/filesystems && continue ;;
@@ -528,7 +531,7 @@ set_part_meta)
                 cur_lbl=$(fdisk -l "$disk" 2>/dev/null | sed -n 's/^Disklabel type:[[:space:]]*//p' | head -n1)
                 if [ -n "$label" ]; then
                     case "$fstype" in
-                        ext4|ext3|ext2) e2label "$part" "$label" >> "$LOG_FILE" 2>&1 || true ;;
+                        ext4|ext3|ext2) tune2fs -L "$label" "$part" >> "$LOG_FILE" 2>&1 || true; blkid -g >/dev/null 2>&1 || true; blkid -p "$part" >/dev/null 2>&1 || true ;;
                         btrfs) btrfs filesystem label "$part" "$label" >> "$LOG_FILE" 2>&1 || true ;;
                         vfat|fat32) fatlabel "$part" "$label" >> "$LOG_FILE" 2>&1 || true ;;
                         ntfs) ntfslabel "$part" "$label" >> "$LOG_FILE" 2>&1 || true ;;
