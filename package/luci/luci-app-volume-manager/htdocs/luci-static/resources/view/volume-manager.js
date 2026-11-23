@@ -573,9 +573,17 @@ var disk = this.getCurDisk();
 var sfd = (this.diskInfo && this.diskInfo.sfdisk && this.diskInfo.sfdisk.partitiontable) || {};
 var existingLayout = this.detectTableLayout(disk);
 var segs = this.buildSegments(disk, this.diskInfo);
-if (!this.selectedItem && segs.length) this.selectedItem = segs[0];
+        if (this.selectedItem) {
+            var matched = segs.find(function(x) {
+                return (self.selectedItem.node && x.node === self.selectedItem.node) ||
+                       (self.selectedItem.kind === 'free' && x.kind === 'free');
+            });
+            this.selectedItem = matched || segs.at(0) || null;
+        } else if (segs.length) {
+            this.selectedItem = segs.at(0);
+        }
 
-var totalBytes = segs.reduce(function(acc, x) { return acc + (Number(x.size) || 0); }, 0) || 1;
+        var totalBytes = segs.reduce(function(acc, x) { return acc + (Number(x.size) || 0); }, 0) || 1;
 var bar = E('div', {
 'style': 'display:flex; width:100%; height:54px; border-radius:6px; overflow:hidden; border:1px solid var(--border-color-medium, rgba(128,128,128,0.35)); margin-bottom:14px; background:rgba(0,0,0,0.2);'
 }, segs.map(function(sg) {
