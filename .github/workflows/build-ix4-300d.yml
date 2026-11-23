@@ -50,7 +50,6 @@ jobs:
           CONFIG_PACKAGE_luci=y
           CONFIG_PACKAGE_ix4-lcd=y
           CONFIG_PACKAGE_luci-app-ix4-lcd=y
-          CONFIG_PACKAGE_luci-app-mini-diskmanager=y
           CONFIG_PACKAGE_block-mount=y
           CONFIG_PACKAGE_fdisk=y
           CONFIG_PACKAGE_parted=y
@@ -124,7 +123,7 @@ jobs:
           find bin/targets/mvebu/cortexa9/ -maxdepth 2 -type f \
             \( -name "*.img" -o -name "*.bin" -o -name "*.kwb" -o -name "*.manifest" \) \
             -exec cp -v {} release-files/ \;
-          find bin/packages/ -type f \( -name "*ix4-lcd*.apk" -o -name "*mini-diskmanager*.apk" -o -name "*volume-manager*.apk" -o -name "*ix4-lcd*.ipk" \) \
+          find bin/packages/ -type f \( -name "*ix4-lcd*.apk" -o -name "*volume-manager*.apk" -o -name "*ix4-lcd*.ipk" \) \
             -exec cp -v {} release-files/ \;
           (cd release-files && sha256sum * > SHA256SUMS)
           ls -lh release-files/

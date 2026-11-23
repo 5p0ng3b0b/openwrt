@@ -1,6 +1,6 @@
 ## OpenWrt for Lenovo Iomega ix4-300d
 
-Custom OpenWrt build (Linux 6.18 / U-Boot 2026.10) for the **Lenovo Iomega ix4-300d** NAS (Marvell Armada XP MV78230), pre-bundled with LuCI and full front-panel LCD + button support (`ix4-lcd` & `luci-app-ix4-lcd`).
+Custom OpenWrt build (Linux 6.18 / U-Boot 2026.10) for the **Lenovo Iomega ix4-300d** NAS (Marvell Armada XP MV78230), pre-bundled with LuCI, full front-panel LCD + button support (`ix4-lcd` & `luci-app-ix4-lcd`), and GParted-style disk/volume management (`luci-app-volume-manager`).
 
 ### Release Files
 
@@ -13,6 +13,9 @@ Custom OpenWrt build (Linux 6.18 / U-Boot 2026.10) for the **Lenovo Iomega ix4-3
 | `u-boot.bin` | Raw U-Boot payload (no BootROM header) for direct RAM testing at `0x00800000`. |
 | `ix4-lcd-*.apk` | Front-panel ST7565R LCD daemon, marquee scroller, and button handler (`BTN_0` / `BTN_1`). |
 | `luci-app-ix4-lcd-*.apk` | LuCI web interface for configuring LCD rows, scroll speeds, logo upload, and safe shutdown. |
+| `luci-app-volume-manager-*.apk` | LuCI web interface for GParted-style partitioning, mounts, S.M.A.R.T. telemetry, and modular storage tools. |
+| `armada-xp-lenovo-ix4-300d.dts` | Patched Linux 6.18 Device Tree source for reuse in other Linux builds. |
+| `u-boot-armada-xp-lenovo-ix4-300d.dts` | Patched U-Boot 2026.10 Device Tree source for reuse in custom bootloader builds. |
 | `*.manifest` | Complete list of preinstalled packages and versions. |
 | `SHA256SUMS` | SHA-256 checksums for verifying all downloaded files (`sha256sum -c SHA256SUMS`). |
 
