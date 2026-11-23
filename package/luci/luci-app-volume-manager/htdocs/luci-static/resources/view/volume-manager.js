@@ -218,18 +218,8 @@ ptypeSel.disabled = true;
 layoutSel.addEventListener('change', syncPtype);
 syncPtype();
 
-var fsSel = E('select', { 'class': 'cbi-input-select' }, [
-E('option', { 'value': 'ext4' }, 'ext4 (Linux)'),
-E('option', { 'value': 'btrfs' }, 'btrfs (Linux CoW)'),
-E('option', { 'value': 'f2fs' }, 'f2fs (Flash-Friendly)'),
-E('option', { 'value': 'ntfs' }, 'ntfs (Windows)'),
-E('option', { 'value': 'exfat' }, 'exfat (Cross-Platform)'),
-E('option', { 'value': 'vfat' }, 'vfat / FAT32'),
-E('option', { 'value': 'swap' }, 'swap (Linux Swap)'),
-E('option', { 'value': 'none' }, _('Unformatted'))
-]);
-
-var roleSel = E('select', { 'class': 'cbi-input-select' }, [
+var fsSel = this.buildFsSelect(true);
+        var roleSel = E('select', { 'class': 'cbi-input-select' }, [
 E('option', { 'value': 'linux' }, 'Linux Filesystem (0FC63DAF / 0x83)'),
 E('option', { 'value': 'raid' }, 'Linux RAID Member (A19D880F / 0xFD)'),
 E('option', { 'value': 'lvm' }, 'Linux LVM PV (E6D6D379 / 0x8E)'),
@@ -274,17 +264,9 @@ function() { self.refreshAll(); }
 },
 
 openFormatModal: function(seg) {
-var self = this;
-var fsSel = E('select', { 'class': 'cbi-input-select' }, [
-E('option', { 'value': 'ext4' }, 'ext4'),
-E('option', { 'value': 'btrfs' }, 'btrfs'),
-E('option', { 'value': 'f2fs' }, 'f2fs'),
-E('option', { 'value': 'ntfs' }, 'ntfs'),
-E('option', { 'value': 'exfat' }, 'exfat'),
-E('option', { 'value': 'vfat' }, 'vfat (FAT32)'),
-E('option', { 'value': 'swap' }, 'swap')
-]);
-var labelInput = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': seg.label || '' });
+        var self = this;
+        var fsSel = this.buildFsSelect(false);
+        var labelInput = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': seg.label || '' });
 
 ui.showModal(_('Format %s').format(seg.node), [
 E('p', { 'style': 'color:#e53935; font-weight:600;' }, _('Warning: All existing data on %s will be permanently erased.').format(seg.node)),
@@ -443,7 +425,7 @@ E('div', { 'style': 'font-size:11px; opacity:0.9; white-space:nowrap; overflow:h
 var cur = this.selectedItem, isFree = cur && cur.kind === 'free', isPart = cur && cur.kind === 'part';
 var toolbar = E('div', { 'style': 'display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;' }, [
 E('button', { 'class': 'btn cbi-button-apply important', 'disabled': !isFree ? true : null, 'click': function() { if (isFree) self.openCreateModal(disk, cur, existingLayout); } }, _('Create Partition')),
-E('button', { 'class': 'btn cbi-button-action', 'disabled': !isPart ? true : null, 'click': function() { if (isPart) self.openResizeModal(disk, cur); } }, _('Resize / Extend')),
+E('button', { 'class': 'btn cbi-button-action', 'disabled': !(isPart && self.canResize(cur.fstype)) ? true : null, 'title': (isPart && !self.canResize(cur.fstype)) ? _('Resize unavailable for this filesystem or missing resize tool in Config tab') : '', 'click': function() { if (isPart && self.canResize(cur.fstype)) self.openResizeModal(disk, cur); } }, _('Resize / Extend')),
 E('button', { 'class': 'btn cbi-button-action', 'disabled': !isPart ? true : null, 'click': function() { if (isPart) self.openFormatModal(cur); } }, _('Format')),
 E('button', { 'class': 'btn cbi-button-action', 'disabled': !isPart ? true : null, 'click': function() { if (isPart) self.openMetaModal(disk, cur, existingLayout); } }, _('Label / Type / Flags')),
 E('button', {
@@ -635,6 +617,49 @@ renderInfoTab: function() {
         return lines.some(function(l) { return l === pkgName || l.indexOf(pkgName + '-') === 0; });
     },
 
+        canFormat: function(fs) {
+        if (fs === 'none') return true;
+        if (fs === 'ext4' || fs === 'ext3' || fs === 'ext2') return this.isInstalled('e2fsprogs');
+        if (fs === 'btrfs') return this.isInstalled('btrfs-progs');
+        if (fs === 'f2fs') return this.isInstalled('f2fs-tools');
+        if (fs === 'ntfs') return this.isInstalled('ntfs-3g');
+        if (fs === 'exfat') return this.isInstalled('exfat-mkfs');
+        if (fs === 'vfat') return this.isInstalled('dosfstools');
+        if (fs === 'swap') return this.isInstalled('swap-utils');
+        return false;
+    },
+
+    canResize: function(fs) {
+        if (fs === 'ext4' || fs === 'ext3' || fs === 'ext2') return this.isInstalled('resize2fs');
+        if (fs === 'btrfs') return this.isInstalled('btrfs-progs');
+        if (fs === 'f2fs') return this.isInstalled('f2fs-tools');
+        if (fs === 'ntfs') return this.isInstalled('ntfs-3g');
+        return false;
+    },
+
+    buildFsSelect: function(includeNone) {
+        var self = this;
+        var items = [
+            { v: 'ext4', l: 'ext4 (Linux)' },
+            { v: 'btrfs', l: 'btrfs (Linux CoW)' },
+            { v: 'f2fs', l: 'f2fs (Flash-Friendly)' },
+            { v: 'ntfs', l: 'ntfs (Windows)' },
+            { v: 'exfat', l: 'exfat (Cross-Platform)' },
+            { v: 'vfat', l: 'vfat / FAT32' },
+            { v: 'swap', l: 'swap (Linux Swap)' }
+        ];
+        if (includeNone) items.push({ v: 'none', l: _('Unformatted') });
+        var firstReady = null;
+        var opts = items.map(function(it) {
+            var ok = self.canFormat(it.v);
+            if (ok && !firstReady) firstReady = it.v;
+            return E('option', { 'value': it.v, 'disabled': !ok ? true : null }, ok ? it.l : (it.l + ' — ' + _('install in Config tab')));
+        });
+        var sel = E('select', { 'class': 'cbi-input-select' }, opts);
+        if (firstReady) sel.value = firstReady;
+        return sel;
+    },
+
     renderConfigTab: function() {
 var self = this;
 var groups = [
@@ -716,20 +741,28 @@ return E('button', {
 'type': 'button', 'class': 'btn',
 'style': btnStyle,
 'click': function() {
-ui.showModal(it.label, [
-E('p', {}, _('Packages: ') + it.pkgs),
-E('p', {}, allOk ? _('Status: Installed') : _('Status: Not installed')),
-E('div', { 'class': 'right' }, [
-E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Close')), ' ',
-allOk ? E('button', { 'class': 'btn cbi-button-negative', 'click': function() {
-self.runWithProgress(_('Removing %s').format(it.label), callPkgAct('del', it.pkgs), function() { self.refreshAll(); });
-} }, _('Remove')) : E('button', { 'class': 'btn cbi-button-apply important', 'click': function() {
-self.runWithProgress(_('Installing %s').format(it.label), callPkgAct('add', it.pkgs), function() { self.refreshAll(); });
-} }, _('Install'))
-])
-]);
-}
-}, it.label);
+                        var btns = [ E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')) ];
+                        var bodyNodes = [
+                            E('p', {}, _('Packages: ') + it.pkgs),
+                            E('p', {}, allOk ? _('Status: Fully installed') : (anyOk ? _('Status: Partially installed (kernel driver active)') : _('Status: Not installed')))
+                        ];
+                        if (allOk) {
+                            bodyNodes.push(E('p', { 'style': 'color:#e53935; font-weight:600;' }, _('Warning: Removing these packages will disable formatting and management for %s until reinstalled.').format(it.label)));
+                        }
+                        if (!allOk) {
+                            btns.push(' ', E('button', { 'class': 'btn cbi-button-apply important', 'click': function() {
+                                self.runWithProgress(_('Installing %s').format(it.label), callPkgAct('add', it.pkgs), function() { self.refreshAll(); });
+                            } }, _('Install')));
+                        }
+                        if (anyOk) {
+                            btns.push(' ', E('button', { 'class': 'btn cbi-button-negative', 'click': function() {
+                                self.runWithProgress(_('Removing %s').format(it.label), callPkgAct('del', it.pkgs), function() { self.refreshAll(); });
+                            } }, _('Confirm Remove')));
+                        }
+                        bodyNodes.push(E('div', { 'class': 'right' }, btns));
+                        ui.showModal(it.label, bodyNodes);
+                    }
+                }, it.label);
 }))
 ]);
 }));
