@@ -199,7 +199,45 @@ self.renderMain();
 });
 },
 
-openCreateModal: function(diskObj, seg, existingLayout) {
+    buildRoleWidget: function(keepOpt) {
+        var opts = keepOpt ? [ keepOpt ] : [];
+        var roles = [
+            { v: 'linux', l: 'Linux Filesystem (0FC63DAF / 0x83)' },
+            { v: 'home', l: 'Linux /home (933AC7E1 / 0x83)' },
+            { v: 'raid', l: 'Linux RAID Member (A19D880F / 0xFD)' },
+            { v: 'lvm', l: 'Linux LVM PV (E6D6D379 / 0x8E)' },
+            { v: 'swap', l: 'Linux Swap (0657FD6D / 0x82)' },
+            { v: 'luks', l: 'Linux LUKS Encrypted (CA7D7CCB / 0x83)' },
+            { v: 'dmcrypt', l: 'Linux Plain dm-crypt (7FFEC5C9 / 0x83)' },
+            { v: 'bios', l: 'BIOS Boot Partition (21686148 / 0xDA)' },
+            { v: 'esp', l: 'EFI System Partition (C12A7328 / 0xEF)' },
+            { v: 'zfs', l: 'ZFS / Solaris / FreeBSD ZFS (516E7CBA / 0xBF)' },
+            { v: 'apfs', l: 'Apple APFS (7C3457EF / 0xAF)' },
+            { v: 'hfs', l: 'Apple HFS / HFS+ (48465300 / 0xAF)' },
+            { v: 'msftdata', l: 'Microsoft Basic Data (EBD0A0A2 / 0x07)' },
+            { v: 'msr', l: 'Microsoft Reserved MSR (E3C9E316 / 0x0C)' },
+            { v: 'ldm', l: 'Windows Dynamic Disk LDM (AF9B60A0 / 0x42)' },
+            { v: 'diag', l: 'Windows Recovery (DE94BBA4 / 0x27)' },
+            { v: 'custom', l: _('Custom Hex (0x..) or GPT GUID...') }
+        ];
+        roles.forEach(function(r) { opts.push(E('option', { 'value': r.v }, r.l)); });
+        var sel = E('select', { 'class': 'cbi-input-select' }, opts);
+        var customIn = E('input', {
+            'type': 'text', 'class': 'cbi-input-text',
+            'placeholder': 'e.g. 0x83 or 0FC63DAF-8483-4772-8E79-3D69D8477DE4',
+            'style': 'display:none; margin-top:6px; width:100%;'
+        });
+        sel.addEventListener('change', function() {
+            customIn.style.display = (sel.value === 'custom') ? '' : 'none';
+        });
+        return {
+            sel: sel,
+            node: E('div', {}, [ sel, customIn ]),
+            getValue: function() { return sel.value === 'custom' ? customIn.value.trim() : sel.value; }
+        };
+    },
+
+    openCreateModal: function(diskObj, seg, existingLayout) {
         var self = this;
         var maxMiB = Math.max(1, Math.floor((Number(seg.size) || 0) / (1024 * 1024)));
         var preMiB = 0;
@@ -229,15 +267,8 @@ openCreateModal: function(diskObj, seg, existingLayout) {
         syncPtype();
 
         var fsSel = this.buildFsSelect(true);
-        var roleSel = E('select', { 'class': 'cbi-input-select' }, [
-            E('option', { 'value': 'linux' }, 'Linux Filesystem (0FC63DAF / 0x83)'),
-            E('option', { 'value': 'raid' }, 'Linux RAID Member (A19D880F / 0xFD)'),
-            E('option', { 'value': 'lvm' }, 'Linux LVM PV (E6D6D379 / 0x8E)'),
-            E('option', { 'value': 'swap' }, 'Linux Swap (0657FD6D / 0x82)'),
-            E('option', { 'value': 'msftdata' }, 'Microsoft Basic Data (EBD0A0A2 / 0x07)'),
-            E('option', { 'value': 'esp' }, 'EFI System Partition (C12A7328 / 0xEF)'),
-            E('option', { 'value': 'diag' }, 'Windows Recovery (DE94BBA4 / 0x27)')
-        ]);
+        var roleW = this.buildRoleWidget(null);
+        var roleSel = roleW.sel;
         fsSel.addEventListener('change', function() {
             var v = fsSel.value;
             if (v === 'swap') roleSel.value = 'swap';
@@ -398,7 +429,7 @@ openCreateModal: function(diskObj, seg, existingLayout) {
                 E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Layout')), E('div', { 'class': 'cbi-value-field' }, [ layoutSel ]) ]),
                 E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Type')), E('div', { 'class': 'cbi-value-field' }, [ ptypeSel ]) ]),
                 E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Filesystem')), E('div', { 'class': 'cbi-value-field' }, [ fsSel ]) ]),
-                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Type ID')), E('div', { 'class': 'cbi-value-field' }, [ roleSel ]) ]),
+                E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Type ID')), E('div', { 'class': 'cbi-value-field' }, [ roleW.node ]) ]),
                 E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Free Space Preceding')), E('div', { 'class': 'cbi-value-field' }, [ E('div', { 'style': 'display:flex; gap:8px; align-items:center;' }, [ preNumIn, preUnitSel ]) ]) ]),
                 E('div', { 'class': 'cbi-value' }, [
                     E('label', { 'class': 'cbi-value-title' }, _('New Size (max %d MiB)').format(maxMiB)),
@@ -416,7 +447,7 @@ openCreateModal: function(diskObj, seg, existingLayout) {
                     'click': function() {
                         var szArg = (unitSel.value === 'max') ? 'max' : (Math.round(sizeMiB) + 'M');
                         self.runWithProgress(_('Creating Partition'),
-                            callCreatePart('/dev/' + diskObj.name, layoutSel.value, ptypeSel.value, fsSel.value, szArg, labelInput.value.trim(), roleSel.value, Math.round(preMiB)),
+                            callCreatePart('/dev/' + diskObj.name, layoutSel.value, ptypeSel.value, fsSel.value, szArg, labelInput.value.trim(), roleW.getValue(), Math.round(preMiB)),
                             function() { self.refreshAll(); }
                         );
                     }
@@ -690,23 +721,20 @@ openResizeModal: function(diskObj, seg) {
     openMetaModal: function(diskObj, seg, existingLayout) {
 var self = this;
 var lblIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': seg.label || '' });
-var roleSel = E('select', { 'class': 'cbi-input-select' }, [
-E('option', { 'value': '' }, _('(Keep current: %s)').format((seg.parttype || _('Unknown')) + (seg.rawparttype ? (' [' + seg.rawparttype + ']') : ''))),
-E('option', { 'value': 'linux' }, 'Linux Filesystem (0FC63DAF / 0x83)'),
-E('option', { 'value': 'raid' }, 'Linux RAID Member (A19D880F / 0xFD)'),
-E('option', { 'value': 'lvm' }, 'Linux LVM PV (E6D6D379 / 0x8E)'),
-E('option', { 'value': 'swap' }, 'Linux Swap (0657FD6D / 0x82)'),
-E('option', { 'value': 'msftdata' }, 'Microsoft Basic Data (EBD0A0A2 / 0x07)'),
-E('option', { 'value': 'esp' }, 'EFI System Partition (C12A7328 / 0xEF)'),
-E('option', { 'value': 'diag' }, 'Windows Recovery (DE94BBA4 / 0x27)')
-]);
-var flagBoot = E('input', { 'type': 'checkbox' });
-var flagHidden = E('input', { 'type': 'checkbox' });
-var flagNoAuto = E('input', { 'type': 'checkbox' });
+var keepOpt = E('option', { 'value': '' }, _('(Keep current: %s)').format((seg.parttype || _('Unknown')) + (seg.rawparttype ? (' [' + seg.rawparttype + ']') : '')));
+        var roleW = this.buildRoleWidget(keepOpt);
+                var fStr = String(seg.flags || '');
+        var rType = String(seg.rawparttype || '').toLowerCase();
+        var isBoot = (fStr.indexOf('0x80') !== -1 || fStr.indexOf('Boot') !== -1 || fStr.indexOf('2') !== -1);
+        var isHidden = (fStr.indexOf('62') !== -1 || fStr.indexOf('Hidden') !== -1 || rType === '0x17' || rType === '0x1b' || rType === '0x1c');
+        var isNoAuto = (fStr.indexOf('63') !== -1 || fStr.indexOf('NoBlockIO') !== -1);
+        var flagBoot = E('input', { 'type': 'checkbox', 'checked': isBoot ? 'checked' : null });
+        var flagHidden = E('input', { 'type': 'checkbox', 'checked': isHidden ? 'checked' : null });
+        var flagNoAuto = E('input', { 'type': 'checkbox', 'checked': isNoAuto ? 'checked' : null });
 
 ui.showModal(_('Label, Type ID & Flags — %s').format(seg.node), [
 E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Volume Label')), E('div', { 'class': 'cbi-value-field' }, [ lblIn ]) ]),
-E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Type ID')), E('div', { 'class': 'cbi-value-field' }, [ roleSel ]) ]),
+E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Partition Type ID')), E('div', { 'class': 'cbi-value-field' }, [ roleW.node ]) ]),
 E('div', { 'class': 'cbi-value' }, [
 E('label', { 'class': 'cbi-value-title' }, _('Partition Flags')),
 E('div', { 'class': 'cbi-value-field', 'style': 'display:flex; gap:16px; align-items:center;' }, [
@@ -725,7 +753,7 @@ if (flagBoot.checked) fl.push(existingLayout === 'gpt' ? 'legacy_boot' : 'boot')
 if (flagHidden.checked) fl.push('hidden');
 if (flagNoAuto.checked) fl.push('no_auto');
 ui.hideModal();
-callSetMeta('/dev/' + diskObj.name, seg.num, lblIn.value.trim(), seg.fstype || '', roleSel.value, fl.join(',')).then(function() {
+callSetMeta('/dev/' + diskObj.name, seg.num, lblIn.value.trim(), seg.fstype || '', roleW.getValue(), fl.join(',')).then(function() {
 ui.addNotification(null, E('p', _('Updated partition metadata for %s').format(seg.node)), 'info');
 self.refreshAll();
 });

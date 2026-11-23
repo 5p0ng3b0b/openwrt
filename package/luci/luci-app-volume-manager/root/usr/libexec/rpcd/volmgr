@@ -46,30 +46,45 @@ esac
 }
 
 gpt_type_guid() {
-case "$1" in
-linux|ext4|ext3|ext2|btrfs|f2fs) echo "0FC63DAF-8483-4772-8E79-3D69D8477DE4" ;;
-swap) echo "0657FD6D-A4AB-43C4-84E5-0933C84B4F4F" ;;
-raid) echo "A19D880F-05FC-4D3B-A006-743F0F84911E" ;;
-lvm) echo "E6D6D379-F507-44C2-A23C-238F2A3DF928" ;;
-esp|efi) echo "C12A7328-F81F-11D2-BA4B-00A0C93EC93B" ;;
-msftdata|ntfs|exfat|vfat) echo "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7" ;;
-diag|recovery) echo "DE94BBA4-06D1-4D40-A16A-BFD50179D6AC" ;;
-*) echo "0FC63DAF-8483-4772-8E79-3D69D8477DE4" ;;
-esac
+    case "$1" in
+        efi|esp) echo "C12A7328-F81F-11D2-BA4B-00A0C93EC93B" ;;
+        bios) echo "21686148-6449-6E6F-744E-656564454649" ;;
+        swap) echo "0657FD6D-A496-4300-B1E5-22E5122CF098" ;;
+        raid|md) echo "A19D880F-05FC-4D3B-A006-743F0F84911E" ;;
+        lvm) echo "E6D6D379-F507-44C2-A23C-238F2A3DF928" ;;
+        home) echo "933AC7E1-2EB4-4F13-B844-0E14E2AEF915" ;;
+        luks) echo "CA7D7CCB-63ED-4C53-861C-1742536059CC" ;;
+        dmcrypt) echo "7FFEC5C9-2D00-49B7-8941-3EA10A5586B7" ;;
+        zfs) echo "516E7CBA-6ECF-11D6-8FF8-00022D09712B" ;;
+        apfs) echo "7C3457EF-0000-11AA-AA11-00306543ECAC" ;;
+        hfs) echo "48465300-0000-11AA-AA11-00306543ECAC" ;;
+        msr) echo "E3C9E316-0B5C-4DB8-817D-F92DF00215AE" ;;
+        ldm) echo "AF9B60A0-1431-4F62-BC68-3311714A69AD" ;;
+        ntfs|exfat|vfat|fat32|msftdata) echo "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7" ;;
+        diag|recovery) echo "DE94BBA4-06D1-4D40-A16A-BFD50179D6AC" ;;
+        *-*-*-*-*) echo "$1" ;;
+        *) echo "0FC63DAF-8483-4772-8E79-3D69D8477DE4" ;;
+    esac
 }
 
 mbr_type_hex() {
-case "$1" in
-linux|ext4|ext3|ext2|btrfs|f2fs) echo "83" ;;
-swap) echo "82" ;;
-raid) echo "fd" ;;
-lvm) echo "8e" ;;
-esp|efi) echo "ef" ;;
-msftdata|ntfs|exfat) echo "07" ;;
-vfat) echo "0c" ;;
-diag|recovery) echo "27" ;;
-*) echo "83" ;;
-esac
+    case "$1" in
+        efi|esp) echo "ef" ;;
+        bios) echo "da" ;;
+        swap) echo "82" ;;
+        raid|md) echo "fd" ;;
+        lvm) echo "8e" ;;
+        zfs) echo "bf" ;;
+        apfs|hfs) echo "af" ;;
+        msr) echo "0c" ;;
+        ldm) echo "42" ;;
+        ntfs|exfat|msftdata) echo "07" ;;
+        vfat|fat32) echo "0c" ;;
+        diag|recovery) echo "27" ;;
+        0x*|0X*) echo "${1#0?}" ;;
+        [0-9a-fA-F][0-9a-fA-F]) echo "$1" ;;
+        *) echo "83" ;;
+    esac
 }
 
 mkfs_run() {
@@ -507,41 +522,55 @@ run_delete_job "$disk" "$num" >/dev/null 2>&1 &
 echo '{"started":true}'
 ;;
 set_part_meta)
-json_get_vars disk num label fstype role flags
-is_safe_dev "$disk" || { echo '{"error":"Protected or invalid device"}'; exit 0; }
-part=$(part_path_for "$disk" "$num")
-cur_lbl=$(sfdisk -J "$disk" 2>/dev/null | sed -n 's/.*"label"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
-if [ -n "$role" ]; then
-if [ "$cur_lbl" = "gpt" ]; then
-sfdisk --part-type "$disk" "$num" "$(gpt_type_guid "$role")" >> "$LOG_FILE" 2>&1 || true
-else
-sfdisk --part-type "$disk" "$num" "$(mbr_type_hex "$role")" >> "$LOG_FILE" 2>&1 || true
-fi
-fi
-if [ "$cur_lbl" = "gpt" ]; then
-attrs=""
-echo "$flags" | grep -qw "hidden" && attrs="${attrs},62"
-echo "$flags" | grep -qw "legacy_boot" && attrs="${attrs},2"
-echo "$flags" | grep -qw "no_auto" && attrs="${attrs},63"
-sfdisk --part-attrs "$disk" "$num" "${attrs#,}" >> "$LOG_FILE" 2>&1 || true
-else
-if echo "$flags" | grep -qw "boot"; then
-sfdisk --activate "$disk" "$num" >> "$LOG_FILE" 2>&1 || true
-fi
-fi
-if [ -n "$label" ]; then
-case "$fstype" in
-ext4|ext3|ext2) tune2fs -L "$label" "$part" >> "$LOG_FILE" 2>&1 || true ;;
-btrfs) btrfs filesystem label "$part" "$label" >> "$LOG_FILE" 2>&1 || true ;;
-f2fs) sfdisk --part-label "$disk" "$num" "$label" >> "$LOG_FILE" 2>&1 || true ;;
-vfat) fatlabel "$part" "$label" >> "$LOG_FILE" 2>&1 || true ;;
-ntfs) ntfslabel "$part" "$label" >> "$LOG_FILE" 2>&1 || true ;;
-esac
-fi
-partx -u "$disk" >/dev/null 2>&1 || true
-echo '{"ok":true}'
-;;
-mount_action)
+                json_get_vars disk num label fstype role flags
+                is_safe_dev "$disk" || { echo '{"error":"Protected or invalid device"}'; exit 0; }
+                part=$(part_path_for "$disk" "$num")
+                cur_lbl=$(fdisk -l "$disk" 2>/dev/null | sed -n 's/^Disklabel type:[[:space:]]*//p' | head -n1)
+                if [ -n "$label" ]; then
+                    case "$fstype" in
+                        ext4|ext3|ext2) e2label "$part" "$label" >> "$LOG_FILE" 2>&1 || true ;;
+                        btrfs) btrfs filesystem label "$part" "$label" >> "$LOG_FILE" 2>&1 || true ;;
+                        vfat|fat32) fatlabel "$part" "$label" >> "$LOG_FILE" 2>&1 || true ;;
+                        ntfs) ntfslabel "$part" "$label" >> "$LOG_FILE" 2>&1 || true ;;
+                        exfat) exfatlabel "$part" "$label" >> "$LOG_FILE" 2>&1 || true ;;
+                    esac
+                fi
+                if [ "$cur_lbl" = "gpt" ]; then
+                    [ -n "$role" ] && sfdisk --no-reread --part-type "$disk" "$num" "$(gpt_type_guid "$role")" >> "$LOG_FILE" 2>&1 || true
+                    attrs=""
+                    case ",$flags," in *,boot,*) attrs="$attrs,LegacyBIOSBootable" ;; esac
+                    case ",$flags," in *,hidden,*) attrs="$attrs,62" ;; esac
+                    case ",$flags," in *,noauto,*) attrs="$attrs,63" ;; esac
+                    attrs="${attrs#,}"
+                    sfdisk --no-reread --part-attrs "$disk" "$num" "${attrs:--}" >> "$LOG_FILE" 2>&1 || true
+                else
+                    if [ -n "$role" ]; then
+                        sfdisk --no-reread --part-type "$disk" "$num" "$(mbr_type_hex "$role")" >> "$LOG_FILE" 2>&1 || true
+                    fi
+                    case ",$flags," in
+                        *,hidden,*)
+                            cur_t=$(sfdisk --part-type "$disk" "$num" 2>/dev/null | tr 'A-F' 'a-f')
+                            case "$cur_t" in
+                                0b|0c) sfdisk --no-reread --part-type "$disk" "$num" "1c" >> "$LOG_FILE" 2>&1 || true ;;
+                                *) sfdisk --no-reread --part-type "$disk" "$num" "17" >> "$LOG_FILE" 2>&1 || true ;;
+                            esac ;;
+                        *)
+                            cur_t=$(sfdisk --part-type "$disk" "$num" 2>/dev/null | tr 'A-F' 'a-f')
+                            case "$cur_t" in
+                                1b|1c) sfdisk --no-reread --part-type "$disk" "$num" "0c" >> "$LOG_FILE" 2>&1 || true ;;
+                                17) sfdisk --no-reread --part-type "$disk" "$num" "83" >> "$LOG_FILE" 2>&1 || true ;;
+                            esac ;;
+                    esac
+                    is_act=$(fdisk -l "$disk" 2>/dev/null | awk -v p="$part" '$1==p && $2=="*" {print 1}')
+                    case ",$flags," in
+                        *,boot,*) [ -z "$is_act" ] && printf 'a\n%s\nw\n' "$num" | fdisk "$disk" >> "$LOG_FILE" 2>&1 || true ;;
+                        *) [ -n "$is_act" ] && printf 'a\n%s\nw\n' "$num" | fdisk "$disk" >> "$LOG_FILE" 2>&1 || true ;;
+                    esac
+                fi
+                partx -u "$disk" >/dev/null 2>&1 || true
+                echo '{"ok":true}'
+                ;;
+            mount_action)
 json_get_vars action part target
 case "$action" in
 mount)
