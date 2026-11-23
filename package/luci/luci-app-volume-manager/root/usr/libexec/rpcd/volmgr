@@ -347,17 +347,39 @@ run_pkg_job() {
         apk update >> "$LOG_FILE" 2>&1 || true
         filtered=""
         user_only=""
+        kver=$(uname -r)
         for p in $pkgs; do
             case "$p" in
-                kmod-fs-ext2)
-            mkfs.ext2 -F ${label:+-L "$label"} "$part" >> "$LOG_FILE" 2>&1
-            ;;
-        ext4) grep -qw ext4 /proc/filesystems && continue ;;
-                kmod-fs-btrfs) grep -qw btrfs /proc/filesystems && continue ;;
-                kmod-fs-f2fs) grep -qw f2fs /proc/filesystems && continue ;;
-                kmod-fs-ntfs3) grep -qw ntfs3 /proc/filesystems && continue ;;
-                kmod-fs-exfat) grep -qw exfat /proc/filesystems && continue ;;
-                kmod-fs-vfat) grep -qw vfat /proc/filesystems && continue ;;
+                kmod-fs-ext2|kmod-fs-ext4)
+                    if grep -qw ext4 /proc/filesystems || find "/lib/modules/$kver" -name 'ext4.ko' 2>/dev/null | grep -q .; then
+                        modprobe ext4 >> "$LOG_FILE" 2>&1 || true
+                        continue
+                    fi ;;
+                kmod-fs-btrfs)
+                    if grep -qw btrfs /proc/filesystems || find "/lib/modules/$kver" -name 'btrfs.ko' 2>/dev/null | grep -q .; then
+                        modprobe btrfs >> "$LOG_FILE" 2>&1 || true
+                        continue
+                    fi ;;
+                kmod-fs-f2fs)
+                    if grep -qw f2fs /proc/filesystems || find "/lib/modules/$kver" -name 'f2fs.ko' 2>/dev/null | grep -q .; then
+                        modprobe f2fs >> "$LOG_FILE" 2>&1 || true
+                        continue
+                    fi ;;
+                kmod-fs-ntfs3)
+                    if grep -qw ntfs3 /proc/filesystems || find "/lib/modules/$kver" -name 'ntfs3.ko' 2>/dev/null | grep -q .; then
+                        modprobe ntfs3 >> "$LOG_FILE" 2>&1 || true
+                        continue
+                    fi ;;
+                kmod-fs-exfat)
+                    if grep -qw exfat /proc/filesystems || find "/lib/modules/$kver" -name 'exfat.ko' 2>/dev/null | grep -q .; then
+                        modprobe exfat >> "$LOG_FILE" 2>&1 || true
+                        continue
+                    fi ;;
+                kmod-fs-vfat)
+                    if grep -qw vfat /proc/filesystems || find "/lib/modules/$kver" -name 'vfat.ko' 2>/dev/null | grep -q .; then
+                        modprobe vfat >> "$LOG_FILE" 2>&1 || true
+                        continue
+                    fi ;;
                 kmod-ata-core|kmod-ata-ahci) [ -d /sys/bus/pci/drivers/ahci ] && continue ;;
                 kmod-usb-storage) [ -d /sys/bus/usb/drivers/usb-storage ] && continue ;;
             esac
