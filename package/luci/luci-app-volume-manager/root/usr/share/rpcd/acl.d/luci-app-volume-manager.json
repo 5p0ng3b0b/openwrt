@@ -1,0 +1,22 @@
+{
+"luci-app-volume-manager": {
+"description": "Grant access to Volume Manager ubus methods and fstab UCI",
+"read": {
+"ubus": {
+"volmgr": [ "list", "info", "smart", "packages", "job_status" ],
+"file": [ "read", "stat" ]
+},
+"uci": [ "fstab" ],
+"file": {
+"/tmp/volmgr.log": [ "read" ],
+"/proc/mounts": [ "read" ]
+}
+},
+"write": {
+"ubus": {
+"volmgr": [ "create_part", "format_part", "resize_part", "delete_part", "set_part_meta", "mount_action", "pkg_action" ]
+},
+"uci": [ "fstab" ]
+}
+}
+}

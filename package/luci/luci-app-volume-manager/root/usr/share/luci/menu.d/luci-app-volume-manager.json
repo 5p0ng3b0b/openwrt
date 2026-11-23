@@ -1,0 +1,13 @@
+{
+"admin/services/volume-manager": {
+"title": "Volume Manager",
+"order": 55,
+"action": {
+"type": "view",
+"path": "volume-manager"
+},
+"depends": {
+"acl": [ "luci-app-volume-manager" ]
+}
+}
+}
