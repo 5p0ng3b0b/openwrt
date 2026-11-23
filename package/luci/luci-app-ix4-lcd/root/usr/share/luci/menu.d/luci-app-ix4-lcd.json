@@ -1,7 +1,7 @@
 {
-	"admin/system/ix4-lcd": {
+	"admin/services/ix4-lcd": {
 		"title": "LCD Configuration",
-		"order": 65,
+		"order": 56,
 		"action": {
 			"type": "view",
 			"path": "ix4-lcd"
