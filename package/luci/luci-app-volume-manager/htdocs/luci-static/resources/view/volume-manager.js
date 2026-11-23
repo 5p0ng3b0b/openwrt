@@ -671,7 +671,7 @@ items: [
 ]
 },
 {
-title: 'Volumes & Backup',
+title: 'Advanced Storage title: 'Volumes & Backup', Replication',
 desc: 'Packages for RAID, LVM, LUKS encryption, iSCSI, and rsync jobs.',
 items: [
 { label: 'Software RAID (mdadm)', pkgs: 'mdadm' },
