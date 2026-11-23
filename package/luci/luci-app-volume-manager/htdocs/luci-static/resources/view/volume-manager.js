@@ -443,27 +443,149 @@ function() { self.refreshAll(); }
 },
 
 openResizeModal: function(diskObj, seg) {
-var self = this;
-var szIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': 'max', 'placeholder': 'max or +20G / 100G' });
-ui.showModal(_('Resize / Extend %s').format(seg.node), [
-E('p', {}, _('Enter "max" to expand into all adjacent unallocated space, or specify a new size (e.g. +20G or 100G).')),
-E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('New Size')), E('div', { 'class': 'cbi-value-field' }, [ szIn ]) ]),
-E('div', { 'class': 'right' }, [
-E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')), ' ',
-E('button', {
-'class': 'btn cbi-button-apply important',
-'click': function() {
-self.runWithProgress(_('Resizing %s').format(seg.node),
-callResizePart('/dev/' + diskObj.name, seg.num, szIn.value.trim() || 'max', seg.fstype || 'ext4'),
-function() { self.refreshAll(); }
-);
-}
-}, _('Resize'))
-])
-]);
-},
+        var self = this;
+        var segs = this.buildSegments(diskObj, this.diskInfo);
+        var idx = segs.findIndex(function(x) { return x.node === seg.node; });
+        var nextSeg = (idx >= 0 && idx + 1 < segs.length) ? segs.at(idx + 1) : null;
+        var adjFreeMiB = (nextSeg && nextSeg.kind === 'free') ? Math.max(0, Math.floor((Number(nextSeg.size) || 0) / (1024 * 1024))) : 0;
+        var curMiB = Math.max(64, Math.round((Number(seg.size) || 0) / (1024 * 1024)));
+        var totalSpanMiB = curMiB + adjFreeMiB;
+        var sizeMiB = curMiB;
 
-openMetaModal: function(diskObj, seg, existingLayout) {
+        var hatchBg = 'repeating-linear-gradient(45deg, rgba(128,128,128,0.14), rgba(128,128,128,0.14) 8px, rgba(128,128,128,0.24) 8px, rgba(128,128,128,0.24) 16px)';
+        var segCenter = E('div', {
+            'style': 'flex:1 1 auto; height:100%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; overflow:hidden; white-space:nowrap; padding:0 6px;'
+        });
+        var handleRight = E('div', {
+            'title': _('Drag right edge to grow or shrink partition'),
+            'style': 'width:10px; height:100%; background:rgba(255,255,255,0.35); cursor:ew-resize; flex:0 0 10px;'
+        });
+        var segCur = E('div', {
+            'style': 'height:100%; min-width:28px; background:' + (FS_COLORS[seg.fstype] || '#455a64') + '; color:#fff; display:flex; align-items:stretch; overflow:hidden;'
+        }, [ segCenter, handleRight ]);
+        var segPost = E('div', { 'style': 'height:100%; background:' + hatchBg + ';' });
+        var previewBar = E('div', {
+            'style': 'display:flex; width:100%; height:44px; border-radius:6px; overflow:hidden; border:1px solid rgba(128,128,128,0.45); margin-bottom:12px; background:rgba(0,0,0,0.2); user-select:none; touch-action:none;'
+        }, [ segCur, segPost ]);
+        var numIn = E('input', { 'type': 'number', 'class': 'cbi-input-text', 'min': '64', 'step': 'any', 'value': String((curMiB / 1024).toFixed(2)), 'style': 'width:130px;' });
+        var unitSel = E('select', { 'class': 'cbi-input-select', 'style': 'width:95px;' }, [
+            E('option', { 'value': 'GiB', 'selected': 'selected' }, 'GiB'),
+            E('option', { 'value': 'MiB' }, 'MiB'),
+            E('option', { 'value': 'TiB' }, 'TiB'),
+            E('option', { 'value': 'pct' }, '%'),
+            E('option', { 'value': 'max' }, 'Max')
+        ]);
+        var postNumIn = E('input', { 'type': 'number', 'class': 'cbi-input-text', 'min': '0', 'step': 'any', 'value': String(adjFreeMiB), 'style': 'width:130px;' });
+        var postUnitSel = E('select', { 'class': 'cbi-input-select', 'style': 'width:95px;' }, [
+            E('option', { 'value': 'MiB', 'selected': 'selected' }, 'MiB'),
+            E('option', { 'value': 'GiB' }, 'GiB'),
+            E('option', { 'value': 'TiB' }, 'TiB'),
+            E('option', { 'value': 'pct' }, '%')
+        ]);
+
+        var fmtVal = function(mib, u) {
+            if (u === 'GiB') return (mib / 1024).toFixed(2);
+            if (u === 'TiB') return (mib / 1048576).toFixed(3);
+            if (u === 'pct') return Math.round((mib / totalSpanMiB) * 100);
+            return Math.round(mib);
+        };
+        var parseVal = function(val, u) {
+            var v = parseFloat(val) || 0;
+            if (u === 'GiB') return v * 1024;
+            if (u === 'TiB') return v * 1048576;
+            if (u === 'pct') return (v / 100) * totalSpanMiB;
+            return v;
+        };
+
+        var syncInputs = function() {
+            var u = unitSel.value;
+            numIn.disabled = (u === 'max');
+            numIn.value = (u === 'max') ? (totalSpanMiB / 1024).toFixed(2) : fmtVal(sizeMiB, u);
+            postNumIn.value = fmtVal(Math.max(0, totalSpanMiB - sizeMiB), postUnitSel.value);
+        };
+
+        var updatePreview = function() {
+            sizeMiB = Math.max(64, Math.min(totalSpanMiB, Math.round(sizeMiB)));
+            var postMiB = Math.max(0, totalSpanMiB - sizeMiB);
+            segCur.style.flex = sizeMiB + ' 1 0';
+            segPost.style.flex = postMiB + ' 1 0';
+            var delta = sizeMiB - curMiB;
+            var tag = delta > 0 ? (' (+' + (delta >= 1024 ? (delta / 1024).toFixed(1) + ' GiB' : delta + ' MiB') + ')')
+                    : (delta < 0 ? (' (' + (delta <= -1024 ? (delta / 1024).toFixed(1) + ' GiB' : delta + ' MiB') + ')') : '');
+            segCenter.textContent = (sizeMiB >= 1024 ? (sizeMiB / 1024).toFixed(1) + ' GiB' : sizeMiB + ' MiB') + tag;
+        };
+
+        handleRight.addEventListener('pointerdown', function(ev) {
+            ev.preventDefault();
+            var startX = ev.clientX;
+            var initSize = sizeMiB;
+            var barW = previewBar.getBoundingClientRect().width || 1;
+            var onMove = function(mv) {
+                var deltaMiB = Math.round(((mv.clientX - startX) / barW) * totalSpanMiB);
+                if (unitSel.value === 'max') unitSel.value = 'GiB';
+                sizeMiB = Math.max(64, Math.min(totalSpanMiB, initSize + deltaMiB));
+                syncInputs();
+                updatePreview();
+            };
+            var onUp = function() {
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+            };
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+        });
+
+        unitSel.addEventListener('change', function() {
+            if (unitSel.value === 'max') sizeMiB = totalSpanMiB;
+            syncInputs();
+            updatePreview();
+        });
+        numIn.addEventListener('input', function() {
+            sizeMiB = parseVal(numIn.value, unitSel.value);
+            postNumIn.value = fmtVal(Math.max(0, totalSpanMiB - Math.round(sizeMiB)), postUnitSel.value);
+            updatePreview();
+        });
+        postUnitSel.addEventListener('change', syncInputs);
+        postNumIn.addEventListener('input', function() {
+            var wantPost = Math.max(0, Math.min(totalSpanMiB - 64, Math.round(parseVal(postNumIn.value, postUnitSel.value))));
+            if (unitSel.value === 'max') unitSel.value = 'GiB';
+            sizeMiB = totalSpanMiB - wantPost;
+            numIn.value = fmtVal(sizeMiB, unitSel.value);
+            updatePreview();
+        });
+        updatePreview();
+
+        ui.showModal(_('Resize / Extend %s').format(seg.node), [
+            previewBar,
+            E('div', { 'class': 'cbi-section' }, [
+                E('div', { 'class': 'cbi-value' }, [
+                    E('label', { 'class': 'cbi-value-title' }, _('New Size (current %s)').format(fmtBytes(seg.size))),
+                    E('div', { 'class': 'cbi-value-field' }, [ E('div', { 'style': 'display:flex; gap:8px; align-items:center;' }, [ numIn, unitSel ]) ])
+                ]),
+                E('div', { 'class': 'cbi-value' }, [
+                    E('label', { 'class': 'cbi-value-title' }, _('Free Space Following')),
+                    E('div', { 'class': 'cbi-value-field' }, [ E('div', { 'style': 'display:flex; gap:8px; align-items:center;' }, [ postNumIn, postUnitSel ]) ])
+                ])
+            ]),
+            E('div', { 'class': 'right' }, [
+                E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')), ' ',
+                E('button', {
+                    'class': 'btn cbi-button-apply important',
+                    'click': function() {
+                        var delta = Math.round(sizeMiB) - curMiB;
+                        if (delta === 0 && unitSel.value !== 'max') { ui.hideModal(); return; }
+                        var szArg = (unitSel.value === 'max') ? 'max' : (delta < 0 ? ('-' + Math.abs(delta) + 'M') : (Math.round(sizeMiB) + 'M'));
+                        self.runWithProgress(_('Resizing %s').format(seg.node),
+                            callResizePart('/dev/' + diskObj.name, seg.num, szArg, seg.fstype || 'ext4'),
+                            function() { self.refreshAll(); }
+                        );
+                    }
+                }, _('Resize'))
+            ])
+        ]);
+    },
+
+    openMetaModal: function(diskObj, seg, existingLayout) {
 var self = this;
 var lblIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': seg.label || '' });
 var roleSel = E('select', { 'class': 'cbi-input-select' }, [
