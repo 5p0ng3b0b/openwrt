@@ -102,68 +102,64 @@ esac
 }
 
 run_create_job() {
-disk="$1"; layout="$2"; ptype="$3"; fstype="$4"; size_str="$5"; label="$6"; role="$7"
-t0=$(date +%s)
-write_job "running" 10 "Checking partition table on $disk..." "$t0" 10 ""
-log_line "create_part: disk=$disk layout=$layout ptype=$ptype fstype=$fstype size=$size_str label=$label role=$role"
+    disk="$1"; layout="$2"; ptype="$3"; fstype="$4"; size_str="$5"; label="$6"; role="$7"; offset_mib="${8:-0}"
+    t0=$(date +%s)
+    write_job "running" 10 "Checking partition table on $disk..." "$t0" 10 ""
+    log_line "create_part: disk=$disk layout=$layout ptype=$ptype fstype=$fstype size=$size_str label=$label role=$role offset_mib=$offset_mib"
 
-sfd_json=$(sfdisk -J "$disk" 2>/dev/null || true)
-if [ -z "$sfd_json" ] || ! echo "$sfd_json" | grep -q '"partitiontable"'; then
-lbl="gpt"
-[ "$layout" = "mbr" ] && lbl="dos"
-write_job "running" 25 "Initializing $lbl partition table on $disk..." "$t0" 8 ""
-printf 'label: %s\n' "$lbl" | sfdisk "$disk" >> "$LOG_FILE" 2>&1 || {
-write_job "error" 100 "Failed" "$t0" 0 "Failed to initialize partition table on $disk"; return 1;
-}
-partx -u "$disk" >/dev/null 2>&1 || true
-sleep 1
-fi
-
-sfd_json=$(sfdisk -J "$disk" 2>/dev/null || true)
-cur_lbl=$(echo "$sfd_json" | sed -n 's/.*"label"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
-[ -z "$role" ] && role="$fstype"
-
-write_job "running" 45 "Creating partition on $disk..." "$t0" 6 ""
-sz_arg=""
-[ -n "$size_str" ] && [ "$size_str" != "max" ] && sz_arg=", $size_str"
-if [ "$cur_lbl" = "gpt" ]; then
-tguid=$(gpt_type_guid "$role")
-start_arg=""
-    if [ "${offset_mib:-0}" -gt 0 ] 2>/dev/null; then
-        free_start=$(sfdisk -F "$disk" 2>/dev/null | awk '/^[[:space:]]*[0-9]+/ {print $1; exit}')
-        [ -n "$free_start" ] && start_arg=$((free_start + offset_mib * 2048))
+    has_parts=$(lsblk -n -r -o TYPE "$disk" 2>/dev/null | grep -cw part || true)
+    cur_lbl=$(fdisk -l "$disk" 2>/dev/null | sed -n 's/^Disklabel type:[[:space:]]*//p' | head -n1)
+    if [ "${has_parts:-0}" -eq 0 ] && [ -z "$cur_lbl" ]; then
+        lbl="gpt"
+        [ "$layout" = "mbr" ] && lbl="dos"
+        write_job "running" 25 "Initializing $lbl partition table on $disk..." "$t0" 8 ""
+        printf 'label: %s\n' "$lbl" | sfdisk --no-reread "$disk" >> "$LOG_FILE" 2>&1 || {
+            write_job "error" 100 "Failed" "$t0" 0 "Failed to initialize partition table on $disk (see /tmp/volmgr.log)"; return 1;
+        }
+        partx -u "$disk" >/dev/null 2>&1 || true
+        sleep 1
+        cur_lbl="$lbl"
     fi
-    printf '%s,%s, %s\n' "$start_arg" "${sz_arg#, }" "$tguid" | sfdisk --append "$disk" >> "$LOG_FILE" 2>&1
-else
-thex=$(mbr_type_hex "$role")
-if [ "$ptype" = "extended" ]; then
-printf ',%s, E\n' "${sz_arg#, }" | sfdisk --append "$disk" >> "$LOG_FILE" 2>&1
-else
-start_arg=""
-            if [ "${offset_mib:-0}" -gt 0 ] 2>/dev/null; then
-                free_start=$(sfdisk -F "$disk" 2>/dev/null | awk '/^[[:space:]]*[0-9]+/ {print $1; exit}')
-                [ -n "$free_start" ] && start_arg=$((free_start + offset_mib * 2048))
-            fi
-            printf '%s,%s, %s\n' "$start_arg" "${sz_arg#, }" "$thex" | sfdisk --append "$disk" >> "$LOG_FILE" 2>&1
-fi
-fi
-if [ $? -ne 0 ]; then
-write_job "error" 100 "Failed" "$t0" 0 "sfdisk failed creating partition on $disk"; return 1;
-fi
+    [ -z "$cur_lbl" ] && [ "$layout" = "gpt" ] && cur_lbl="gpt"
+    [ -z "$cur_lbl" ] && cur_lbl="dos"
+    [ -z "$role" ] && role="$fstype"
 
-partx -u "$disk" >/dev/null 2>&1 || true
-sleep 1
-new_num=$(sfdisk -J "$disk" 2>/dev/null | grep -o '"node"[[:space:]]*:[[:space:]]*"[^"]*"' | tail -n1 | sed -E 's/.*[^0-9]([0-9]+)"$/\1/')
-new_part=$(part_path_for "$disk" "$new_num")
+    write_job "running" 45 "Creating partition on $disk..." "$t0" 6 ""
+    sz_arg=""
+    [ -n "$size_str" ] && [ "$size_str" != "max" ] && sz_arg="$size_str"
+    start_arg=""
+    if [ "${offset_mib:-0}" -gt 0 ] 2>/dev/null; then
+        last_end=$(fdisk -l -u=sectors "$disk" 2>/dev/null | awk -v d="$disk" '$1 ~ "^"d"[0-9p]" {end=$3} END{print end}')
+        [ -n "$last_end" ] && start_arg=$((last_end + 1 + offset_mib * 2048))
+    fi
 
-if [ -n "$fstype" ] && [ "$fstype" != "none" ] && [ "$ptype" != "extended" ]; then
-write_job "running" 70 "Formatting $new_part as $fstype..." "$t0" 4 ""
-mkfs_run "$new_part" "$fstype" "$label" || {
-write_job "error" 100 "Failed" "$t0" 0 "mkfs.$fstype failed on $new_part"; return 1;
-}
-fi
+    if [ "$cur_lbl" = "gpt" ]; then
+        tguid=$(gpt_type_guid "$role")
+        printf '%s,%s,%s\n' "$start_arg" "$sz_arg" "$tguid" | sfdisk --no-reread --force --append "$disk" >> "$LOG_FILE" 2>&1
+    else
+        thex=$(mbr_type_hex "$role")
+        if [ "$ptype" = "extended" ]; then
+            printf '%s,%s,E\n' "$start_arg" "$sz_arg" | sfdisk --no-reread --force --append "$disk" >> "$LOG_FILE" 2>&1
+        else
+            printf '%s,%s,%s\n' "$start_arg" "$sz_arg" "$thex" | sfdisk --no-reread --force --append "$disk" >> "$LOG_FILE" 2>&1
+        fi
+    fi
+    if [ $? -ne 0 ]; then
+        write_job "error" 100 "Failed" "$t0" 0 "sfdisk failed creating partition on $disk (see /tmp/volmgr.log)"; return 1;
+    fi
 
-write_job "done" 100 "Completed" "$t0" 0 "Created $new_part ($fstype)"
+    partx -u "$disk" >/dev/null 2>&1 || true
+    sleep 1
+    new_part=$(lsblk -n -r -o NAME,TYPE "$disk" 2>/dev/null | awk '$2=="part"{print "/dev/"$1}' | tail -n1)
+
+    if [ -n "$new_part" ] && [ -n "$fstype" ] && [ "$fstype" != "none" ] && [ "$ptype" != "extended" ]; then
+        write_job "running" 70 "Formatting $new_part as $fstype..." "$t0" 4 ""
+        mkfs_run "$new_part" "$fstype" "$label" || {
+            write_job "error" 100 "Failed" "$t0" 0 "mkfs.$fstype failed on $new_part (see /tmp/volmgr.log)"; return 1;
+        }
+    fi
+
+    write_job "done" 100 "Completed" "$t0" 0 "Created $new_part ($fstype)"
 }
 
 run_format_job() {
