@@ -7,7 +7,8 @@ Custom OpenWrt build (Linux 6.18 / U-Boot 2026.10) for the **Lenovo Iomega ix4-3
 | File | Purpose |
 | :--- | :--- |
 | `*-squashfs-factory.img` | Full NAND image (U-Boot + kernel + rootfs UBI) for fresh installs. |
-| `*-squashfs-sysupgrade.bin` | Standard upgrade image for systems already running OpenWrt (`sysupgrade`). |
+| `*-squashfs-sysupgrade.bin` | Standard upgrade image for systems already running OpenWrt (`sysupgrade`, includes `attendedsysupgrade`). |
+| `*-squashfs-sysupgrade-full.bin` | All-in-one NAS upgrade image with all filesystems (`ext4`, `btrfs`, `f2fs`, `ntfs3`, `exfat`, `vfat`, `xfs`), tools (`e2fsprogs`, `resize2fs`, `tune2fs`, `btrfs-progs`, `smartmontools`, `mdadm` + RAID 0/1/5/6/10, `lvm2`, `cryptsetup`, `open-iscsi`, `tgt`, `rsync`), `ksmbd` + `wsdd2`, `tailscale`, `autossh`, `hd-idle`, `irqbalance`, `filemanager`, `acl`, `ttyd`, `wget-ssl`, `usbutils`, and `pciutils` preinstalled. |
 | `*-initramfs-kernel.bin` | RAM-bootable OpenWrt image for TFTP/USB recovery or initial flashing. |
 | `kernel.bin` | Standalone Linux 6.18 kernel (`zImage` + appended DTB, no initramfs) for booting external USB/SATA rootfs. |
 | `zImage` | Raw standalone Linux 6.18 `zImage` (no initramfs, no appended DTB) for custom Linux distributions. |
@@ -17,7 +18,7 @@ Custom OpenWrt build (Linux 6.18 / U-Boot 2026.10) for the **Lenovo Iomega ix4-3
 | `u-boot.bin` | Raw U-Boot payload (no BootROM header) for direct RAM testing at `0x00800000`. |
 | `ix4-lcd-*.apk` | Front-panel ST7565R LCD daemon, marquee scroller, and button handler (`BTN_0` / `BTN_1`). |
 | `luci-app-ix4-lcd-*.apk` | LuCI web interface for configuring LCD rows, scroll speeds, logo upload, and safe shutdown. |
-| `luci-app-volume-manager-*.apk` | LuCI web interface for GParted-style partitioning, mounts, S.M.A.R.T. telemetry, and modular storage tools. |
+| `luci-app-volume-manager-*.apk` | LuCI web interface for GParted-style partitioning, mounts, S.M.A.R.T. telemetry, Software RAID, LUKS2 encryption, LVM2, iSCSI, scheduled Rsync backups, and modular storage tools. |
 | `armada-xp-lenovo-ix4-300d.dts` | Patched Linux 6.18 Device Tree source for reuse in other Linux builds. |
 | `u-boot-armada-xp-lenovo-ix4-300d.dts` | Patched U-Boot 2026.10 Device Tree source for reuse in custom bootloader builds. |
 | `*.manifest` | Complete list of preinstalled packages and versions. |
