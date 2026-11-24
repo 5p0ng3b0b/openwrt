@@ -14,15 +14,11 @@ Custom OpenWrt build (Linux 6.18 / U-Boot 2026.10) for the **Lenovo Iomega ix4-3
 | `zImage` | Raw standalone Linux 6.18 `zImage` (no initramfs, no appended DTB) for custom Linux distributions. |
 | `armada-xp-lenovo-ix4-300d.dtb` | Compiled Linux 6.18 Device Tree binary blob (`dtb`). |
 | `kernel-ix4-300d.config` | Complete compiled Linux 6.18 kernel configuration file (`.config`). |
-| `u-boot-with-spl.kwb` | Complete Marvell BootROM NAND bootloader image (SPL + U-Boot + 2048-byte page header). |
-| `u-boot.bin` | Raw U-Boot payload (no BootROM header) for direct RAM testing at `0x00800000`. |
+| `uboot26.10.zip` | All U-Boot 2026.10 artifacts (`u-boot-with-spl.kwb`, `u-boot.bin`, `u-boot-armada-xp-lenovo-ix4-300d.dts`, `u-boot-armada-xp-lenovo-ix4-300d.dtb`, `u-boot-ix4-300d.config`, and `README-UBOOT.txt`). |
 | `ix4-lcd-*.apk` | Front-panel ST7565R LCD daemon, marquee scroller, and button handler (`BTN_0` / `BTN_1`). |
 | `luci-app-ix4-lcd-*.apk` | LuCI web interface for configuring LCD rows, scroll speeds, logo upload, and safe shutdown. |
 | `luci-app-volume-manager-*.apk` | LuCI web interface for GParted-style partitioning, mounts, S.M.A.R.T. telemetry, Software RAID, LUKS2 encryption, LVM2, iSCSI, scheduled Rsync backups, and modular storage tools. |
 | `armada-xp-lenovo-ix4-300d.dts` | Patched Linux 6.18 Device Tree source for reuse in other Linux builds. |
-| `u-boot-armada-xp-lenovo-ix4-300d.dts` | Patched U-Boot 2026.10 Device Tree source for reuse in custom bootloader builds. |
-| `u-boot-armada-xp-lenovo-ix4-300d.dtb` | Compiled U-Boot 2026.10 Device Tree binary blob (`dtb`). |
-| `u-boot-ix4-300d.config` | Complete compiled U-Boot 2026.10 configuration file (`.config`). |
 | `*.manifest` | Complete list of preinstalled packages and versions. |
 | `SHA256SUMS` | SHA-256 checksums for verifying all downloaded files (`sha256sum -c SHA256SUMS`). |
 
