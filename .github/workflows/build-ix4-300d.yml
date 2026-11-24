@@ -86,7 +86,6 @@ jobs:
             CONFIG_PACKAGE_luci-app-ix4-lcd=y \
             CONFIG_PACKAGE_luci-app-volume-manager=y \
             CONFIG_PACKAGE_luci-app-attendedsysupgrade=y \
-            CONFIG_ALL_KMODS=y \
             CONFIG_PACKAGE_kmod-crypto-marvell=m \
             CONFIG_PACKAGE_kmod-fs-ntfs3=m \
             CONFIG_PACKAGE_kmod-usb-storage-uas=m \
