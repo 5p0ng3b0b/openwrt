@@ -165,6 +165,19 @@ jobs:
           echo "Release tag: $TAG"
           echo "name=$TAG" >> "$GITHUB_OUTPUT"
 
+      - name: Prune stale APK and legacy assets on existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          for old in $(gh release view "$TAG" --json assets -q '.assets[].name' 2>/dev/null || true); do
+            case "$old" in
+              ix4-lcd-*.apk|luci-app-ix4-lcd-*.apk|luci-app-volume-manager-*.apk|*mvebu-cortexa9-lenovo_*|*.manifest)
+                gh release delete-asset "$TAG" "$old" --yes || true
+                ;;
+            esac
+          done
+
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v3
         with:
