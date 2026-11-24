@@ -120,7 +120,7 @@ jobs:
           printf '%s\n' "Linux ${KVER} Kernel Bundle for Lenovo Iomega ix4-300d" "kernel.bin : zImage + appended armada-xp-lenovo-ix4-300d.dtb (no initramfs)" "zImage     : raw compressed ARM kernel (no initramfs, no appended DTB)" > kernel-stage/README-KERNEL.txt
           python3 -c "import shutil; shutil.make_archive('release-files/kernel-${KVER}', 'zip', 'kernel-stage')"
           find bin/targets/mvebu/cortexa9/ -maxdepth 2 -type f \
-            \( -name "*.img" -o -name "*.bin" -o -name "*.manifest" \) \
+            \( -name "*.img" -o -name "*.bin" \) \
             -exec cp -v {} release-files/ \;
           for f in release-files/*mvebu-cortexa9-lenovo_*; do
             test -f "$f" && mv -v "$f" "${f/mvebu-cortexa9-lenovo_/}"
