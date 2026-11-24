@@ -156,7 +156,7 @@ E('button', { 'class': 'cbi-button cbi-button-action', 'click': openCreateRaidMo
 ))
 )),
 mdBtns.length ? E('div', { 'style': 'margin-bottom:8px;' }, mdBtns) : E('span', new Object()),
-E('pre', { 'style': 'font-size:12px; padding:8px; background:rgba(0,0,0,0.18); border-radius:4px; overflow:auto; max-height:220px;' }, (mdDet || mdstat || _('No active MD RAID arrays.')).trim())
+E('pre', { 'style': 'font-size:12px; padding:8px; background:rgba(0,0,0,0.18); border-radius:4px; overflow:auto; max-height:220px;' }, (mdDet || mdstat || _('No active MD RAID arrays.')).trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))
 )));
 var cryptRows = cryptRaw.split('\n').filter(Boolean).map(function(line) {
 var cols = line.trim().split(/\s+/);
