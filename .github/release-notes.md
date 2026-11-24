@@ -12,9 +12,9 @@ Custom OpenWrt build (Linux 6.18 / U-Boot 2026.10) for the **Lenovo Iomega ix4-3
 | `openwrt-ix4-300d-initramfs-kernel.bin` | RAM-bootable OpenWrt image for TFTP/USB recovery or initial flashing. |
 | `kernel-6.18.zip` | Standalone Linux kernel bundle (`kernel.bin` with appended DTB, raw `zImage`, `armada-xp-lenovo-ix4-300d.dtb`, `armada-xp-lenovo-ix4-300d.dts`, `kernel-ix4-300d.config`, and `README-KERNEL.txt`). |
 | `uboot26.10.zip` | All U-Boot 2026.10 artifacts (`u-boot-with-spl.kwb`, `u-boot.bin`, `u-boot-armada-xp-lenovo-ix4-300d.dts`, `u-boot-armada-xp-lenovo-ix4-300d.dtb`, `u-boot-ix4-300d.config`, and `README-UBOOT.txt`). |
-| `ix4-lcd-*.apk` | Front-panel ST7565R LCD daemon, marquee scroller, and button handler (`BTN_0` / `BTN_1`). |
-| `luci-app-ix4-lcd-*.apk` | LuCI web interface for configuring LCD rows, scroll speeds, logo upload, and safe shutdown. |
-| `luci-app-volume-manager-*.apk` | LuCI web interface for GParted-style partitioning, mounts, S.M.A.R.T. telemetry, Software RAID, LUKS2 encryption, LVM2, iSCSI, scheduled Rsync backups, and modular storage tools. |
+| `ix4-lcd.apk` | Front-panel ST7565R LCD daemon, marquee scroller, and button handler (`BTN_0` / `BTN_1`). |
+| `luci-app-ix4-lcd.apk` | LuCI web interface for configuring LCD rows, scroll speeds, logo upload, and safe shutdown. |
+| `luci-app-volume-manager.apk` | LuCI web interface for GParted-style partitioning, mounts, S.M.A.R.T. telemetry, Software RAID, LUKS2 encryption, LVM2, iSCSI, scheduled Rsync backups, and modular storage tools. |
 | `SHA256SUMS` | SHA-256 checksums for verifying all downloaded files (`sha256sum -c SHA256SUMS`). |
 
 ---

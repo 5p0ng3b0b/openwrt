@@ -143,8 +143,9 @@ jobs:
           for f in release-files/*mvebu-cortexa9-lenovo_*; do
             test -f "$f" && mv -v "$f" "${f/mvebu-cortexa9-lenovo_/}"
           done
-          find bin/packages/ -type f \( -name "*ix4-lcd*.apk" -o -name "*volume-manager*.apk" -o -name "*ix4-lcd*.ipk" \) \
-            -exec cp -v {} release-files/ \;
+          find bin/packages/ -type f -name "ix4-lcd-*.apk" -exec cp -v {} release-files/ix4-lcd.apk \;
+          find bin/packages/ -type f -name "luci-app-ix4-lcd-*.apk" -exec cp -v {} release-files/luci-app-ix4-lcd.apk \;
+          find bin/packages/ -type f -name "luci-app-volume-manager-*.apk" -exec cp -v {} release-files/luci-app-volume-manager.apk \;
           (cd release-files && sha256sum * > SHA256SUMS)
           ls -lh release-files/
 
