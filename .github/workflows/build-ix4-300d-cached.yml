@@ -101,7 +101,7 @@ jobs:
 
       - name: Collect release files and generate SHA256SUMS
         run: |
-          mkdir -p release-files uboot-stage
+          mkdir -p release-files uboot-stage kernel-stage
           find build_dir/ -path '*u-boot-ix4-300d*/u-boot.bin' -exec cp -v {} uboot-stage/ \;
           find bin/targets/mvebu/cortexa9/ -maxdepth 2 -type f -name "*.kwb" -exec cp -v {} uboot-stage/ \;
           find build_dir/target-* -path '*u-boot-ix4-300d/u-boot-*/arch/arm/dts/armada-xp-lenovo-ix4-300d.dts' -exec cp -v {} uboot-stage/u-boot-armada-xp-lenovo-ix4-300d.dts \;
@@ -109,14 +109,22 @@ jobs:
           find build_dir/target-* -path '*u-boot-ix4-300d/u-boot-*/.config' -exec cp -v {} uboot-stage/u-boot-ix4-300d.config \;
           printf '%s\n' 'U-Boot 2026.10 for Lenovo Iomega ix4-300d' 'RAM Test (Marvell>>): tftpboot 0x00800000 u-boot.bin && go 0x00800000' 'NAND Flash (Marvell>>): tftpboot 0x02000000 u-boot-with-spl.kwb && nand erase 0x0 0xe0000 && nand write 0x02000000 0x0 $filesize && reset' > uboot-stage/README-UBOOT.txt
           python3 -c "import shutil; shutil.make_archive('release-files/uboot26.10', 'zip', 'uboot-stage')"
-          find build_dir/target-* -path '*linux-mvebu_cortexa9/linux-*/arch/arm/boot/dts/marvell/armada-xp-lenovo-ix4-300d.dts' -exec cp -v {} release-files/armada-xp-lenovo-ix4-300d.dts \;
-          find build_dir/target-* -path '*linux-mvebu_cortexa9/lenovo_ix4-300d-kernel.bin' -exec cp -v {} release-files/kernel.bin \;
-          find build_dir/target-* -path '*linux-mvebu_cortexa9/zImage' -exec cp -v {} release-files/zImage \;
-          find build_dir/target-* -path '*linux-mvebu_cortexa9/linux-*/arch/arm/boot/dts/marvell/armada-xp-lenovo-ix4-300d.dtb' -exec cp -v {} release-files/armada-xp-lenovo-ix4-300d.dtb \;
-          find build_dir/target-* -path '*linux-mvebu_cortexa9/linux-*/.config' -exec cp -v {} release-files/kernel-ix4-300d.config \;
+          KDIR=$(find build_dir/target-* -maxdepth 2 -type d -name 'linux-6*' -o -name 'linux-7*' | head -n1)
+          KVER=$(basename "$KDIR" | cut -d- -f2 | cut -d. -f1,2)
+          KVER="${KVER:-6.18}"
+          find build_dir/target-* -path '*linux-mvebu_cortexa9/linux-*/arch/arm/boot/dts/marvell/armada-xp-lenovo-ix4-300d.dts' -exec cp -v {} kernel-stage/armada-xp-lenovo-ix4-300d.dts \;
+          find build_dir/target-* -path '*linux-mvebu_cortexa9/lenovo_ix4-300d-kernel.bin' -exec cp -v {} kernel-stage/kernel.bin \;
+          find build_dir/target-* -path '*linux-mvebu_cortexa9/zImage' -exec cp -v {} kernel-stage/zImage \;
+          find build_dir/target-* -path '*linux-mvebu_cortexa9/linux-*/arch/arm/boot/dts/marvell/armada-xp-lenovo-ix4-300d.dtb' -exec cp -v {} kernel-stage/armada-xp-lenovo-ix4-300d.dtb \;
+          find build_dir/target-* -path '*linux-mvebu_cortexa9/linux-*/.config' -exec cp -v {} kernel-stage/kernel-ix4-300d.config \;
+          printf '%s\n' "Linux ${KVER} Kernel Bundle for Lenovo Iomega ix4-300d" "kernel.bin : zImage + appended armada-xp-lenovo-ix4-300d.dtb (no initramfs)" "zImage     : raw compressed ARM kernel (no initramfs, no appended DTB)" > kernel-stage/README-KERNEL.txt
+          python3 -c "import shutil; shutil.make_archive('release-files/kernel-${KVER}', 'zip', 'kernel-stage')"
           find bin/targets/mvebu/cortexa9/ -maxdepth 2 -type f \
             \( -name "*.img" -o -name "*.bin" -o -name "*.manifest" \) \
             -exec cp -v {} release-files/ \;
+          for f in release-files/*mvebu-cortexa9-lenovo_*; do
+            test -f "$f" && mv -v "$f" "${f/mvebu-cortexa9-lenovo_/}"
+          done
           find bin/packages/ -type f \( -name "*ix4-lcd*.apk" -o -name "*volume-manager*.apk" -o -name "*ix4-lcd*.ipk" \) \
             -exec cp -v {} release-files/ \;
           (cd release-files && sha256sum * > SHA256SUMS)

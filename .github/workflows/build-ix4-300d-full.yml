@@ -117,7 +117,7 @@ jobs:
           mkdir -p release-files-full
           SRC=$(find bin/targets/mvebu/cortexa9/ -maxdepth 2 -type f -name "*lenovo_ix4-300d-squashfs-sysupgrade.bin" | head -n1)
           test -f "$SRC"
-          cp -v "$SRC" release-files-full/openwrt-mvebu-cortexa9-lenovo_ix4-300d-squashfs-sysupgrade-full.bin
+          cp -v "$SRC" release-files-full/openwrt-ix4-300d-squashfs-sysupgrade-full.bin
           ls -lh release-files-full/
 
       - name: Upload Full Sysupgrade to existing GitHub Release
@@ -130,4 +130,4 @@ jobs:
           fi
           test -n "$TAG"
           echo "Uploading full sysupgrade asset to release: $TAG"
-          gh release upload "$TAG" release-files-full/openwrt-mvebu-cortexa9-lenovo_ix4-300d-squashfs-sysupgrade-full.bin --clobber
+          gh release upload "$TAG" release-files-full/openwrt-ix4-300d-squashfs-sysupgrade-full.bin --clobber

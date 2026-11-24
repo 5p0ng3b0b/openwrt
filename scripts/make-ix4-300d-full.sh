@@ -8,5 +8,5 @@ make defconfig
 make -j$(nproc) download
 make -j$(nproc) || make -j1 V=s
 cp -f bin/targets/mvebu/cortexa9/openwrt-mvebu-cortexa9-lenovo_ix4-300d-squashfs-sysupgrade.bin \
-      bin/targets/mvebu/cortexa9/openwrt-mvebu-cortexa9-lenovo_ix4-300d-squashfs-sysupgrade-full.bin
+      bin/targets/mvebu/cortexa9/openwrt-ix4-300d-squashfs-sysupgrade-full.bin
 ls -lh bin/targets/mvebu/cortexa9/*sysupgrade-full.bin
