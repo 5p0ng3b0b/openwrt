@@ -40,6 +40,272 @@ ntfs: '#1565c0', exfat: '#0277bd', vfat: '#ef6c00',
 swap: '#ad1457', linux_raid_member: '#c62828', LVM2_member: '#4527a0'
 };
 
+var callVolumesStatus = rpc.declare({ object: 'volmgr', method: 'volumes_status', expect: new Object() });
+var callRaidAction = rpc.declare({ object: 'volmgr', method: 'raid_action', params: new Array('action', 'array', 'level', 'members', 'name'), expect: new Object() });
+var callLuksAction = rpc.declare({ object: 'volmgr', method: 'luks_action', params: new Array('action', 'part', 'name', 'passphrase'), expect: new Object() });
+
+function buildVolumesTabView(self) {
+var wrap = E('div', new Object());
+var statusBox = E('div', { 'style': 'margin-top:10px;' }, E('em', new Object(), _('Loading RAID & LUKS status...')));
+
+var candidateParts = new Array();
+(self.disks || new Array()).forEach(function(d) {
+var kids = d.children || new Array();
+if (kids.length) {
+kids.forEach(function(c) {
+if (!c.mountpoint) candidateParts.push({ dev: '/dev/' + c.name, label: '/dev/' + c.name + ' (' + fmtBytes(c.size) + (c.fstype ? ', ' + c.fstype : '') + ')' });
+});
+} else {
+candidateParts.push({ dev: '/dev/' + d.name, label: '/dev/' + d.name + ' (' + fmtBytes(d.size) + ', whole disk)' });
+}
+});
+
+var openCreateRaidModal = function() {
+var levelSel = E('select', { 'class': 'cbi-input-select' }, new Array('0', '1', '5', '6', '10').map(function(l) {
+return E('option', { 'value': l }, 'RAID ' + l);
+}));
+var arrInput = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': '/dev/md0' });
+var nameInput = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': 'nas_raid' });
+var checks = candidateParts.map(function(p) {
+var cb = E('input', { 'type': 'checkbox', 'value': p.dev, 'style': 'margin-right:6px;' });
+return E('label', { 'style': 'display:block; margin:4px 0;' }, new Array(cb, p.label));
+});
+ui.showModal(_('Create Software RAID Array'), new Array(
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('RAID Level')), E('div', { 'class': 'cbi-value-field' }, new Array(levelSel)))),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Array Device')), E('div', { 'class': 'cbi-value-field' }, new Array(arrInput)))),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Array Name')), E('div', { 'class': 'cbi-value-field' }, new Array(nameInput)))),
+E('div', { 'style': 'margin:8px 0; max-height:180px; overflow:auto; border:1px solid rgba(128,128,128,0.3); padding:8px; border-radius:4px;' }, checks.length ? checks : new Array(E('em', new Object(), _('No unmounted partitions/disks found')))),
+E('div', { 'class': 'right', 'style': 'margin-top:12px;' }, new Array(
+E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')), ' ',
+E('button', { 'class': 'cbi-button cbi-button-action', 'click': function() {
+var chosen = new Array();
+checks.forEach(function(lbl) { var inp = lbl.querySelector('input'); if (inp && inp.checked) chosen.push(inp.value); });
+if (chosen.length < 2) { ui.addNotification(null, E('p', new Object(), _('Select at least 2 member devices.')), 'warning'); return; }
+ui.hideModal();
+callRaidAction('create', arrInput.value.trim(), levelSel.value, chosen.join(' '), nameInput.value.trim()).then(function(r) {
+if (r && r.error) ui.addNotification(null, E('p', new Object(), r.error), 'error');
+else { ui.addNotification(null, E('p', new Object(), _('RAID array created.')), 'info'); self.refreshAll(); }
+});
+} }, _('Create Array'))
+))
+));
+};
+var openLuksFormatModal = function() {
+var partSel = E('select', { 'class': 'cbi-input-select' }, candidateParts.map(function(p) { return E('option', { 'value': p.dev }, p.label); }));
+var pw1 = E('input', { 'type': 'password', 'class': 'cbi-input-text', 'placeholder': _('Passphrase') });
+var pw2 = E('input', { 'type': 'password', 'class': 'cbi-input-text', 'placeholder': _('Confirm passphrase') });
+ui.showModal(_('Encrypt Partition (LUKS2)'), new Array(
+E('p', { 'style': 'color:#c62828; font-weight:600;' }, _('Warning: All existing data on the selected partition will be erased.')),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Target Partition')), E('div', { 'class': 'cbi-value-field' }, new Array(partSel)))),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Passphrase')), E('div', { 'class': 'cbi-value-field' }, new Array(pw1)))),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Confirm')), E('div', { 'class': 'cbi-value-field' }, new Array(pw2)))),
+E('div', { 'class': 'right', 'style': 'margin-top:12px;' }, new Array(
+E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')), ' ',
+E('button', { 'class': 'cbi-button cbi-button-negative', 'click': function() {
+if (!pw1.value || pw1.value !== pw2.value) { ui.addNotification(null, E('p', new Object(), _('Passphrases do not match.')), 'warning'); return; }
+ui.hideModal();
+callLuksAction('format', partSel.value, '', pw1.value).then(function(r) {
+if (r && r.error) ui.addNotification(null, E('p', new Object(), r.error), 'error');
+else { ui.addNotification(null, E('p', new Object(), _('LUKS2 encryption initialized.')), 'info'); self.refreshAll(); }
+});
+} }, _('Format LUKS2'))
+))
+));
+};
+
+var openLuksUnlockModal = function(partDev) {
+var nameIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': 'luks_' + partDev.replace('/dev/', '') });
+var pwIn = E('input', { 'type': 'password', 'class': 'cbi-input-text', 'placeholder': _('Passphrase') });
+ui.showModal(_('Unlock LUKS Volume: ') + partDev, new Array(
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Mapper Name')), E('div', { 'class': 'cbi-value-field' }, new Array(nameIn)))),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Passphrase')), E('div', { 'class': 'cbi-value-field' }, new Array(pwIn)))),
+E('div', { 'class': 'right', 'style': 'margin-top:12px;' }, new Array(
+E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')), ' ',
+E('button', { 'class': 'cbi-button cbi-button-action', 'click': function() {
+ui.hideModal();
+callLuksAction('open', partDev, nameIn.value.trim(), pwIn.value).then(function(r) {
+if (r && r.error) ui.addNotification(null, E('p', new Object(), r.error), 'error');
+else { ui.addNotification(null, E('p', new Object(), _('Unlocked at /dev/mapper/') + nameIn.value.trim()), 'info'); self.refreshAll(); }
+});
+} }, _('Unlock'))
+))
+));
+};
+
+callVolumesStatus().then(function(st) {
+statusBox.innerHTML = '';
+var mdDet = (st && st.md_details) || '';
+var mdstat = (st && st.mdstat) || '';
+var cryptRaw = (st && st.crypt_list) || '';
+var mdNodes = mdDet.match(/=== (\/dev\/md\S+) ===/g) || new Array();
+var mdBtns = mdNodes.map(function(h) {
+var dev = h.replace(/=== | ===/g, '');
+return E('button', { 'class': 'cbi-button cbi-button-negative', 'style': 'margin-right:6px;', 'click': function() {
+callRaidAction('stop', dev, '', '', '').then(function(r) {
+if (r && r.error) ui.addNotification(null, E('p', new Object(), r.error), 'error');
+else { ui.addNotification(null, E('p', new Object(), _('Stopped ') + dev), 'info'); self.refreshAll(); }
+});
+} }, _('Stop ') + dev);
+});
+statusBox.appendChild(E('div', { 'class': 'cbi-section-node', 'style': 'padding:12px; border:1px solid rgba(128,128,128,0.25); border-radius:6px; margin-bottom:14px;' }, new Array(
+E('div', { 'style': 'display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;' }, new Array(
+E('h4', { 'style': 'margin:0;' }, _('Software RAID (mdadm)')),
+E('div', new Object(), new Array(
+E('button', { 'class': 'cbi-button', 'click': function() { callRaidAction('assemble', '', '', '', '').then(function() { self.refreshAll(); }); } }, _('Scan & Assemble')), ' ',
+E('button', { 'class': 'cbi-button cbi-button-action', 'click': openCreateRaidModal }, _('Create RAID Array'))
+))
+)),
+mdBtns.length ? E('div', { 'style': 'margin-bottom:8px;' }, mdBtns) : E('span', new Object()),
+E('pre', { 'style': 'font-size:12px; padding:8px; background:rgba(0,0,0,0.18); border-radius:4px; overflow:auto; max-height:220px;' }, (mdDet || mdstat || _('No active MD RAID arrays.')).trim())
+)));
+var cryptRows = cryptRaw.split('\n').filter(Boolean).map(function(line) {
+var cols = line.trim().split(/\s+/);
+var name = cols.at(0) || '';
+var typ = cols.at(2) || '';
+var dev = '/dev/' + name;
+var actBtn = (typ === 'crypt')
+? E('button', { 'class': 'cbi-button cbi-button-negative', 'click': function() { callLuksAction('close', '', name, '').then(function(r) { if (r && r.error) ui.addNotification(null, E('p', new Object(), r.error), 'error'); else self.refreshAll(); }); } }, _('Lock'))
+: E('button', { 'class': 'cbi-button cbi-button-action', 'click': function() { openLuksUnlockModal(dev); } }, _('Unlock'));
+return E('tr', { 'class': 'tr' }, new Array(E('td', { 'class': 'td' }, dev), E('td', { 'class': 'td' }, typ), E('td', { 'class': 'td' }, fmtBytes(cols.at(3))), E('td', { 'class': 'td' }, cols.at(4) || ''), E('td', { 'class': 'td' }, new Array(actBtn))));
+});
+statusBox.appendChild(E('div', { 'class': 'cbi-section-node', 'style': 'padding:12px; border:1px solid rgba(128,128,128,0.25); border-radius:6px;' }, new Array(
+E('div', { 'style': 'display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;' }, new Array(
+E('h4', { 'style': 'margin:0;' }, _('LUKS2 Encrypted Volumes (cryptsetup)')),
+E('button', { 'class': 'cbi-button cbi-button-action', 'click': openLuksFormatModal }, _('Encrypt Partition (LUKS2)'))
+)),
+cryptRows.length ? E('table', { 'class': 'table' }, new Array(E('tr', { 'class': 'tr table-titles' }, new Array(E('th', { 'class': 'th' }, _('Device')), E('th', { 'class': 'th' }, _('Type')), E('th', { 'class': 'th' }, _('Size')), E('th', { 'class': 'th' }, _('Format')), E('th', { 'class': 'th' }, _('Action'))))).concat(cryptRows)) : E('em', new Object(), _('No LUKS2 encrypted partitions or active mappers detected.'))
+)));
+appendLvmAndIscsiCards(self, statusBox, candidateParts, st);
+});
+wrap.appendChild(statusBox);
+return wrap;
+}
+
+var callLvmAction = rpc.declare({ object: 'volmgr', method: 'lvm_action', params: new Array('action', 'vg', 'lv', 'size', 'devices'), expect: new Object() });
+var callIscsiAction = rpc.declare({ object: 'volmgr', method: 'iscsi_action', params: new Array('action', 'portal', 'iqn', 'backing', 'tid'), expect: new Object() });
+
+function appendLvmAndIscsiCards(self, statusBox, candidateParts, st) {
+var pvsRaw = (st && st.lvm_pvs) || '';
+var vgsRaw = (st && st.lvm_vgs) || '';
+var lvsRaw = (st && st.lvm_lvs) || '';
+var iscsiSess = (st && st.iscsi_sessions) || '';
+var iscsiTgt = (st && st.iscsi_targets) || '';
+
+var openVgCreateModal = function() {
+var vgIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': 'vg_nas' });
+var checks = candidateParts.map(function(p) {
+var cb = E('input', { 'type': 'checkbox', 'value': p.dev, 'style': 'margin-right:6px;' });
+return E('label', { 'style': 'display:block; margin:4px 0;' }, new Array(cb, p.label));
+});
+ui.showModal(_('Create LVM Volume Group (vgcreate)'), new Array(
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Volume Group Name')), E('div', { 'class': 'cbi-value-field' }, new Array(vgIn)))),
+E('div', { 'style': 'margin:8px 0; max-height:170px; overflow:auto; border:1px solid rgba(128,128,128,0.3); padding:8px; border-radius:4px;' }, checks.length ? checks : new Array(E('em', new Object(), _('No unmounted partitions/disks found')))),
+E('div', { 'class': 'right', 'style': 'margin-top:12px;' }, new Array(
+E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')), ' ',
+E('button', { 'class': 'cbi-button cbi-button-action', 'click': function() {
+var chosen = new Array();
+checks.forEach(function(lbl) { var inp = lbl.querySelector('input'); if (inp && inp.checked) chosen.push(inp.value); });
+if (!vgIn.value.trim() || !chosen.length) { ui.addNotification(null, E('p', new Object(), _('Enter VG name and select at least 1 device.')), 'warning'); return; }
+ui.hideModal();
+callLvmAction('vgcreate', vgIn.value.trim(), '', '', chosen.join(' ')).then(function(r) {
+if (r && r.error) ui.addNotification(null, E('p', new Object(), r.error), 'error');
+else { ui.addNotification(null, E('p', new Object(), _('Volume Group created.')), 'info'); self.refreshAll(); }
+});
+} }, _('Create VG'))
+))
+));
+};
+
+var openLvCreateModal = function() {
+var vgIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': 'vg_nas' });
+var lvIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': 'lv_data' });
+var szIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': '10G', 'placeholder': 'e.g. 10G or 500M' });
+ui.showModal(_('Create Logical Volume (lvcreate)'), new Array(
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Volume Group')), E('div', { 'class': 'cbi-value-field' }, new Array(vgIn)))),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Logical Volume')), E('div', { 'class': 'cbi-value-field' }, new Array(lvIn)))),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Size')), E('div', { 'class': 'cbi-value-field' }, new Array(szIn)))),
+E('div', { 'class': 'right', 'style': 'margin-top:12px;' }, new Array(
+E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')), ' ',
+E('button', { 'class': 'cbi-button cbi-button-action', 'click': function() {
+ui.hideModal();
+callLvmAction('lvcreate', vgIn.value.trim(), lvIn.value.trim(), szIn.value.trim(), '').then(function(r) {
+if (r && r.error) ui.addNotification(null, E('p', new Object(), r.error), 'error');
+else { ui.addNotification(null, E('p', new Object(), _('Logical Volume created.')), 'info'); self.refreshAll(); }
+});
+} }, _('Create LV'))
+))
+));
+};
+var openIscsiLoginModal = function() {
+var portalIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'placeholder': '192.168.5.50:3260' });
+ui.showModal(_('Discover & Login iSCSI Target'), new Array(
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Target Portal (IP:Port)')), E('div', { 'class': 'cbi-value-field' }, new Array(portalIn)))),
+E('div', { 'class': 'right', 'style': 'margin-top:12px;' }, new Array(
+E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')), ' ',
+E('button', { 'class': 'cbi-button cbi-button-action', 'click': function() {
+ui.hideModal();
+callIscsiAction('discover_login', portalIn.value.trim(), '', '', 1).then(function(r) {
+if (r && r.error) ui.addNotification(null, E('p', new Object(), r.error), 'error');
+else { ui.addNotification(null, E('p', new Object(), _('iSCSI target connected.')), 'info'); self.refreshAll(); }
+});
+} }, _('Discover & Login'))
+))
+));
+};
+
+var openIscsiTargetModal = function() {
+var iqnIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': 'iqn.2026-11.local.openwrt:nas.lun1' });
+var devSel = E('select', { 'class': 'cbi-input-select' }, candidateParts.map(function(p) { return E('option', { 'value': p.dev }, p.label); }));
+var tidIn = E('input', { 'type': 'number', 'class': 'cbi-input-text', 'value': '1', 'min': '1' });
+ui.showModal(_('Export iSCSI Target LUN (tgt)'), new Array(
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Target IQN')), E('div', { 'class': 'cbi-value-field' }, new Array(iqnIn)))),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Backing Block Device')), E('div', { 'class': 'cbi-value-field' }, new Array(devSel)))),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Target ID')), E('div', { 'class': 'cbi-value-field' }, new Array(tidIn)))),
+E('div', { 'class': 'right', 'style': 'margin-top:12px;' }, new Array(
+E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')), ' ',
+E('button', { 'class': 'cbi-button cbi-button-action', 'click': function() {
+ui.hideModal();
+callIscsiAction('target_add', '', iqnIn.value.trim(), devSel.value, Number(tidIn.value) || 1).then(function(r) {
+if (r && r.error) ui.addNotification(null, E('p', new Object(), r.error), 'error');
+else { ui.addNotification(null, E('p', new Object(), _('iSCSI target LUN exported.')), 'info'); self.refreshAll(); }
+});
+} }, _('Export LUN'))
+))
+));
+};
+
+var lvmSummary = (vgsRaw || pvsRaw || lvsRaw)
+? ('Volume Groups:\n' + (vgsRaw || 'none') + '\n\nPhysical Volumes:\n' + (pvsRaw || 'none') + '\n\nLogical Volumes:\n' + (lvsRaw || 'none'))
+: _('No LVM2 Physical Volumes, Volume Groups, or Logical Volumes configured.');
+
+statusBox.appendChild(E('div', { 'class': 'cbi-section-node', 'style': 'padding:12px; border:1px solid rgba(128,128,128,0.25); border-radius:6px; margin-top:14px; margin-bottom:14px;' }, new Array(
+E('div', { 'style': 'display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;' }, new Array(
+E('h4', { 'style': 'margin:0;' }, _('LVM2 Logical Volume Management')),
+E('div', new Object(), new Array(
+E('button', { 'class': 'cbi-button', 'click': openVgCreateModal }, _('Create Volume Group')), ' ',
+E('button', { 'class': 'cbi-button cbi-button-action', 'click': openLvCreateModal }, _('Create Logical Volume'))
+))
+)),
+E('pre', { 'style': 'font-size:12px; padding:8px; background:rgba(0,0,0,0.18); border-radius:4px; overflow:auto; max-height:200px;' }, lvmSummary.trim())
+)));
+
+var iscsiSummary = (iscsiSess || iscsiTgt)
+? ('Active Initiator Sessions:\n' + (iscsiSess || 'none') + '\n\nExported Target LUNs:\n' + (iscsiTgt || 'none'))
+: _('No active iSCSI initiator sessions or exported target LUNs.');
+
+statusBox.appendChild(E('div', { 'class': 'cbi-section-node', 'style': 'padding:12px; border:1px solid rgba(128,128,128,0.25); border-radius:6px;' }, new Array(
+E('div', { 'style': 'display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;' }, new Array(
+E('h4', { 'style': 'margin:0;' }, _('iSCSI Initiator & Target LUNs')),
+E('div', new Object(), new Array(
+E('button', { 'class': 'cbi-button', 'click': function() { callIscsiAction('logout_all', '', '', '', 1).then(function() { self.refreshAll(); }); } }, _('Logout All')), ' ',
+E('button', { 'class': 'cbi-button', 'click': openIscsiLoginModal }, _('Connect Remote Target')), ' ',
+E('button', { 'class': 'cbi-button cbi-button-action', 'click': openIscsiTargetModal }, _('Export Target LUN'))
+))
+)),
+E('pre', { 'style': 'font-size:12px; padding:8px; background:rgba(0,0,0,0.18); border-radius:4px; overflow:auto; max-height:200px;' }, iscsiSummary.trim())
+)));
+}
+
 return view.extend({
 selectedDisk: null,
 selectedItem: null,
@@ -1259,7 +1525,7 @@ if (this.activeTab === 'disk') body = this.renderDiskTab();
 else if (this.activeTab === 'mounts') body = this.renderMountsTab();
 else if (this.activeTab === 'info') body = this.renderInfoTab();
 else if (this.activeTab === 'config') body = this.renderConfigTab();
-else if (this.activeTab === 'volumes') body = E('div', { 'class': 'cbi-section' }, E('p', {}, _('Phase 2: Software RAID (mdadm), LVM2, LUKS2 Encryption, and iSCSI Target/Initiator.')));
+else if (this.activeTab === 'volumes') body = buildVolumesTabView(this);
 else body = E('div', { 'class': 'cbi-section' }, E('p', {}, _('Phase 3: Scheduled Rsync Mirror & Versioned Snapshot Jobs.')));
 
 this.rootNode.innerHTML = '';

@@ -463,6 +463,20 @@ json_close_object
 json_add_object "pkg_action"
 json_add_string "action" "string"; json_add_string "packages" "string"
 json_close_object
+json_add_object "volumes_status"
+json_close_object
+json_add_object "raid_action"
+json_add_string "action" "string"; json_add_string "array" "string"; json_add_string "level" "string"; json_add_string "members" "string"; json_add_string "name" "string"
+json_close_object
+json_add_object "luks_action"
+json_add_string "action" "string"; json_add_string "part" "string"; json_add_string "name" "string"; json_add_string "passphrase" "string"
+json_close_object
+json_add_object "lvm_action"
+json_add_string "action" "string"; json_add_string "vg" "string"; json_add_string "lv" "string"; json_add_string "size" "string"; json_add_string "devices" "string"
+json_close_object
+json_add_object "iscsi_action"
+json_add_string "action" "string"; json_add_string "portal" "string"; json_add_string "iqn" "string"; json_add_string "backing" "string"; json_add_int "tid" 1
+json_close_object
 json_dump
 ;;
 call)
@@ -649,6 +663,193 @@ add|del) ;;
 esac
 run_pkg_job "$action" "$packages" >/dev/null 2>&1 &
 echo '{"started":true}'
+;;
+volumes_status)
+mdstat=$(cat /proc/mdstat 2>/dev/null || true)
+md_details=""
+for md in /dev/md*; do
+test -b "$md" || continue
+det=$(mdadm --detail "$md" 2>/dev/null || true)
+md_details="${md_details}=== ${md} ===
+${det}
+"
+done
+crypt_list=$(lsblk -e 31 -ln -o NAME,KNAME,TYPE,SIZE,FSTYPE,LABEL,MOUNTPOINT 2>/dev/null | awk '$3=="crypt" || $5=="crypto_LUKS" {print}' || true)
+json_init
+json_add_string "mdstat" "$mdstat"
+json_add_string "md_details" "$md_details"
+lvm_pvs=$(pvs --noheadings -o pv_name,vg_name,pv_size,pv_free 2>/dev/null || true)
+lvm_vgs=$(vgs --noheadings -o vg_name,pv_count,lv_count,vg_size,vg_free 2>/dev/null || true)
+lvm_lvs=$(lvs --noheadings -o lv_name,vg_name,lv_size,lv_attr 2>/dev/null || true)
+iscsi_sessions=$(iscsiadm -m session 2>/dev/null || true)
+iscsi_targets=$(tgtadm --lld iscsi --op show --mode target 2>/dev/null || true)
+json_add_string "crypt_list" "$crypt_list"
+json_add_string "lvm_pvs" "$lvm_pvs"
+json_add_string "lvm_vgs" "$lvm_vgs"
+json_add_string "lvm_lvs" "$lvm_lvs"
+json_add_string "iscsi_sessions" "$iscsi_sessions"
+json_add_string "iscsi_targets" "$iscsi_targets"
+json_dump
+;;
+raid_action)
+json_get_vars action array level members name
+case "$action" in
+create)
+command -v mdadm >/dev/null 2>&1 || { echo '{"error":"mdadm not installed (enable in Config tab)"}'; exit 0; }
+test -n "$members" || { echo '{"error":"No member devices selected"}'; exit 0; }
+for m in $members; do
+is_safe_dev "$m" || { echo '{"error":"Unsafe member device blocked"}'; exit 0; }
+umount "$m" >/dev/null 2>&1 || true
+wipefs -a "$m" >> "$LOG_FILE" 2>&1 || true
+done
+count=$(printf '%s
+' $members | wc -w | tr -d ' ')
+test -z "$array" && array="/dev/md0"
+test -z "$name" && name="raid0"
+modprobe raid456 >/dev/null 2>&1 || true
+if yes | mdadm --create "$array" --level="$level" --raid-devices="$count" --name="$name" --metadata=1.2 $members >> "$LOG_FILE" 2>&1; then
+mkdir -p /etc/mdadm
+mdadm --detail --scan > /etc/mdadm/mdadm.conf 2>/dev/null || true
+echo '{"ok":true}'
+else
+echo '{"error":"mdadm create failed (see /tmp/volmgr.log)"}'
+fi
+;;
+assemble)
+mdadm --assemble --scan >> "$LOG_FILE" 2>&1 || true
+echo '{"ok":true}'
+;;
+stop)
+is_safe_dev "$array" || { echo '{"error":"Invalid array"}'; exit 0; }
+umount "$array" >/dev/null 2>&1 || true
+if mdadm --stop "$array" >> "$LOG_FILE" 2>&1; then
+echo '{"ok":true}'
+else
+echo '{"error":"Failed to stop array (busy)"}'
+fi
+;;
+add_spare)
+is_safe_dev "$array" && is_safe_dev "$members" || { echo '{"error":"Invalid device"}'; exit 0; }
+wipefs -a "$members" >> "$LOG_FILE" 2>&1 || true
+if mdadm --manage "$array" --add "$members" >> "$LOG_FILE" 2>&1; then
+echo '{"ok":true}'
+else
+echo '{"error":"Failed to add spare member"}'
+fi
+;;
+*) echo '{"error":"Invalid raid_action"}'; exit 0 ;;
+esac
+;;
+luks_action)
+json_get_vars action part name passphrase
+command -v cryptsetup >/dev/null 2>&1 || { echo '{"error":"cryptsetup not installed (enable in Config tab)"}'; exit 0; }
+case "$action" in
+format)
+is_safe_dev "$part" || { echo '{"error":"Invalid partition"}'; exit 0; }
+test -n "$passphrase" || { echo '{"error":"Passphrase required"}'; exit 0; }
+umount "$part" >/dev/null 2>&1 || true
+if printf '%s' "$passphrase" | cryptsetup luksFormat --type luks2 --batch-mode "$part" - >> "$LOG_FILE" 2>&1; then
+echo '{"ok":true}'
+else
+echo '{"error":"cryptsetup luksFormat failed (see /tmp/volmgr.log)"}'
+fi
+;;
+open)
+is_safe_dev "$part" || { echo '{"error":"Invalid partition"}'; exit 0; }
+test -z "$name" && name="luks_$(basename "$part")"
+if printf '%s' "$passphrase" | cryptsetup open "$part" "$name" - >> "$LOG_FILE" 2>&1; then
+echo '{"ok":true}'
+else
+echo '{"error":"Failed to unlock LUKS volume (check passphrase)"}'
+fi
+;;
+close)
+test -n "$name" || { echo '{"error":"Mapper name required"}'; exit 0; }
+umount "/dev/mapper/$name" >/dev/null 2>&1 || true
+if cryptsetup close "$name" >> "$LOG_FILE" 2>&1; then
+echo '{"ok":true}'
+else
+echo '{"error":"Failed to lock LUKS volume (busy)"}'
+fi
+;;
+*) echo '{"error":"Invalid luks_action"}'; exit 0 ;;
+esac
+;;
+lvm_action)
+json_get_vars action vg lv size devices
+command -v lvm >/dev/null 2>&1 || { echo '{"error":"lvm2 not installed (enable in Config tab)"}'; exit 0; }
+case "$action" in
+vgcreate)
+test -n "$vg" && test -n "$devices" || { echo '{"error":"VG name and devices required"}'; exit 0; }
+for d in $devices; do
+is_safe_dev "$d" || { echo '{"error":"Unsafe device blocked"}'; exit 0; }
+umount "$d" >/dev/null 2>&1 || true
+pvcreate -ff -y "$d" >> "$LOG_FILE" 2>&1 || true
+done
+if vgcreate "$vg" $devices >> "$LOG_FILE" 2>&1; then
+echo '{"ok":true}'
+else
+echo '{"error":"vgcreate failed (see /tmp/volmgr.log)"}'
+fi
+;;
+lvcreate)
+test -n "$vg" && test -n "$lv" && test -n "$size" || { echo '{"error":"VG, LV name, and size required"}'; exit 0; }
+if lvcreate -y -L "$size" -n "$lv" "$vg" >> "$LOG_FILE" 2>&1; then
+echo '{"ok":true}'
+else
+echo '{"error":"lvcreate failed (see /tmp/volmgr.log)"}'
+fi
+;;
+lvremove)
+test -n "$vg" && test -n "$lv" || { echo '{"error":"VG and LV required"}'; exit 0; }
+umount "/dev/$vg/$lv" >/dev/null 2>&1 || true
+if lvremove -f "$vg/$lv" >> "$LOG_FILE" 2>&1; then
+echo '{"ok":true}'
+else
+echo '{"error":"lvremove failed (busy)"}'
+fi
+;;
+vgremove)
+test -n "$vg" || { echo '{"error":"VG required"}'; exit 0; }
+if vgremove -f "$vg" >> "$LOG_FILE" 2>&1; then
+echo '{"ok":true}'
+else
+echo '{"error":"vgremove failed (remove LVs first)"}'
+fi
+;;
+*) echo '{"error":"Invalid lvm_action"}'; exit 0 ;;
+esac
+;;
+iscsi_action)
+json_get_vars action portal iqn backing tid
+case "$action" in
+discover_login)
+command -v iscsiadm >/dev/null 2>&1 || { echo '{"error":"open-iscsi not installed (enable in Config tab)"}'; exit 0; }
+test -n "$portal" || { echo '{"error":"Portal IP:port required"}'; exit 0; }
+/etc/init.d/open-iscsi start >/dev/null 2>&1 || true
+if iscsiadm -m discovery -t sendtargets -p "$portal" >> "$LOG_FILE" 2>&1 && iscsiadm -m node --loginall=automatic >> "$LOG_FILE" 2>&1; then
+echo '{"ok":true}'
+else
+echo '{"error":"iSCSI discovery/login failed (see /tmp/volmgr.log)"}'
+fi
+;;
+logout_all)
+iscsiadm -m node --logoutall=all >> "$LOG_FILE" 2>&1 || true
+echo '{"ok":true}'
+;;
+target_add)
+command -v tgtadm >/dev/null 2>&1 || { echo '{"error":"tgt not installed (enable in Config tab)"}'; exit 0; }
+test -n "$iqn" && is_safe_dev "$backing" || { echo '{"error":"Valid IQN and backing device required"}'; exit 0; }
+test -z "$tid" && tid=1
+/etc/init.d/tgt start >/dev/null 2>&1 || true
+if tgtadm --lld iscsi --op new --mode target --tid "$tid" -T "$iqn" >> "$LOG_FILE" 2>&1 && tgtadm --lld iscsi --op new --mode logicalunit --tid "$tid" --lun 1 -b "$backing" >> "$LOG_FILE" 2>&1 && tgtadm --lld iscsi --op bind --mode target --tid "$tid" -I ALL >> "$LOG_FILE" 2>&1; then
+echo '{"ok":true}'
+else
+echo '{"error":"tgtadm target export failed (see /tmp/volmgr.log)"}'
+fi
+;;
+*) echo '{"error":"Invalid iscsi_action"}'; exit 0 ;;
+esac
 ;;
 esac
 ;;
