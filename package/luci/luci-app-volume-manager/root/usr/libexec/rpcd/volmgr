@@ -790,7 +790,7 @@ case "$action" in
 vgcreate)
 test -n "$vg" && test -n "$devices" || { echo '{"error":"VG name and devices required"}'; exit 0; }
 for d in $devices; do
-is_safe_dev "$d" || { echo '{"error":"Unsafe device blocked"}'; exit 0; }
+is_safe_dev "$d" || case "$d" in /dev/mapper/control) false ;; /dev/mapper/*) test -b "$d" ;; *) false ;; esac || { echo '{"error":"Unsafe device blocked"}'; exit 0; }
 umount "$d" >/dev/null 2>&1 || true
 pvcreate -ff -y "$d" >> "$LOG_FILE" 2>&1 || true
 done
