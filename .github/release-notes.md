@@ -21,6 +21,8 @@ Custom OpenWrt build (Linux 6.18 / U-Boot 2026.10) for the **Lenovo Iomega ix4-3
 | `luci-app-volume-manager-*.apk` | LuCI web interface for GParted-style partitioning, mounts, S.M.A.R.T. telemetry, Software RAID, LUKS2 encryption, LVM2, iSCSI, scheduled Rsync backups, and modular storage tools. |
 | `armada-xp-lenovo-ix4-300d.dts` | Patched Linux 6.18 Device Tree source for reuse in other Linux builds. |
 | `u-boot-armada-xp-lenovo-ix4-300d.dts` | Patched U-Boot 2026.10 Device Tree source for reuse in custom bootloader builds. |
+| `u-boot-armada-xp-lenovo-ix4-300d.dtb` | Compiled U-Boot 2026.10 Device Tree binary blob (`dtb`). |
+| `u-boot-ix4-300d.config` | Complete compiled U-Boot 2026.10 configuration file (`.config`). |
 | `*.manifest` | Complete list of preinstalled packages and versions. |
 | `SHA256SUMS` | SHA-256 checksums for verifying all downloaded files (`sha256sum -c SHA256SUMS`). |
 

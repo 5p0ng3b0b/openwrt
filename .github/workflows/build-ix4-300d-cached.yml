@@ -109,6 +109,8 @@ jobs:
           find build_dir/target-* -path '*linux-mvebu_cortexa9/zImage' -exec cp -v {} release-files/zImage \;
           find build_dir/target-* -path '*linux-mvebu_cortexa9/linux-*/arch/arm/boot/dts/marvell/armada-xp-lenovo-ix4-300d.dtb' -exec cp -v {} release-files/armada-xp-lenovo-ix4-300d.dtb \;
           find build_dir/target-* -path '*linux-mvebu_cortexa9/linux-*/.config' -exec cp -v {} release-files/kernel-ix4-300d.config \;
+          find build_dir/target-* -path '*u-boot-ix4-300d/u-boot-*/.config' -exec cp -v {} release-files/u-boot-ix4-300d.config \;
+          find build_dir/target-* -path '*u-boot-ix4-300d/u-boot-*/arch/arm/dts/armada-xp-lenovo-ix4-300d.dtb' -exec cp -v {} release-files/u-boot-armada-xp-lenovo-ix4-300d.dtb \;
           find bin/targets/mvebu/cortexa9/ -maxdepth 2 -type f \
             \( -name "*.img" -o -name "*.bin" -o -name "*.kwb" -o -name "*.manifest" \) \
             -exec cp -v {} release-files/ \;
