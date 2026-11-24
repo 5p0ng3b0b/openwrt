@@ -1,0 +1,8 @@
+#!/bin/sh
+if test -f /etc/config/irqbalance; then
+uci -q set irqbalance.irqbalance.enabled='1'
+uci -q commit irqbalance
+/etc/init.d/irqbalance enable >/dev/null 2>&1
+/etc/init.d/irqbalance start >/dev/null 2>&1
+fi
+exit 0
