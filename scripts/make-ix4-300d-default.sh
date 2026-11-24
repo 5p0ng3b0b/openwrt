@@ -2,6 +2,7 @@
 set -e
 cd /home/chief/openwrt
 test "$(git branch --show-current)" = "lenovo-ix4-300d-release"
+if test -f .config; then cp -f .config /tmp/.config.ix4.bak; trap 'cp -f /tmp/.config.ix4.bak .config && rm -f /tmp/.config.ix4.bak' EXIT; fi
 cp target/linux/mvebu/cortexa9/config-ix4-300d .config
 make defconfig
 make -j$(nproc) download
