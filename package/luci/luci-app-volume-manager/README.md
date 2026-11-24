@@ -38,11 +38,17 @@ GParted-style disk partitioning, mount management, S.M.A.R.T. health telemetry, 
 - Displays drive model, serial number, firmware version, capacity, rotational vs. SSD media type, negotiated SATA link speed (`/sys/class/ata_link`) or USB bus speed, logical/physical sector sizes, power-on hours, and SSD wear remaining.
 - Surfaces a one-click **Install smartmontools** button whenever `smartmontools` is not yet installed, and renders the full ATA S.M.A.R.T. attribute table (`ID`, `Attribute`, `Value`, `Worst`, `Thresh`, `Raw Value`).
 
-### 4. Volumes & Backup Tabs (Roadmap)
-- **Volumes (`Phase 2`):** Software RAID (`mdadm`), LVM2 logical volumes, LUKS2 encryption, and iSCSI Target/Initiator management.
-- **Backup (`Phase 3`):** Scheduled and manual `rsync` replication jobs.
+### 4. Volumes Tab (RAID / LVM2 / LUKS2 / iSCSI)
+- **Software RAID (`mdadm`):** Assemble existing arrays or create new `RAID 0/1/5/6/10` arrays with live `/proc/mdstat` and `mdadm --detail` telemetry.
+- **LUKS2 Encryption (`cryptsetup`):** Initialize LUKS2 encrypted partitions, unlock into `/dev/mapper/`, or lock active encrypted volumes.
+- **LVM2 (`lvm2`):** Create Physical Volumes, Volume Groups (`vgcreate`), and Logical Volumes (`lvcreate`) with live `pvs`/`vgs`/`lvs` status.
+- **iSCSI Target & Initiator (`tgt` / `open-iscsi`):** Discover and connect to remote iSCSI portals or export local block devices as iSCSI target LUNs.
 
-### 5. Config Tab (Modular Package & Kernel Driver Manager)
+### 5. Backup Tab (Rsync)
+- Configure persistent `uci` backup jobs (`/etc/config/volmgr_backup`) in **Mirror (`--delete`)**, **Additive (`-aH`)**, or **Dated Snapshot** modes.
+- Run jobs manually with a live progress modal or schedule hourly/daily/weekly `cron` runs with `/tmp/volmgr-backup.log` output.
+
+### 6. Config Tab (Modular Package & Kernel Driver Manager)
 - Organizes storage dependencies into four cards: **Filesystems**, **Storage Buses & Hardware Drivers**, **Health & Diagnostics**, and **Advanced Storage & Replication**.
 - Color-coded status badges detect both installed `apk` packages and active/available kernel modules (`/proc/filesystems` and `/lib/modules/$(uname -r)/*.ko`):
   - **Green:** Fully installed (kernel driver + userspace tools).
