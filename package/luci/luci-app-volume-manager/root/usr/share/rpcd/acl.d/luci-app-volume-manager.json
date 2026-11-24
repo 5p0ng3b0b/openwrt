@@ -9,7 +9,8 @@
 					"smart",
 					"packages",
 					"job_status",
-					"volumes_status"
+					"volumes_status",
+					"backup_list"
 				],
 				"file": [
 					"read",
@@ -42,7 +43,9 @@
 					"raid_action",
 					"luks_action",
 					"lvm_action",
-					"iscsi_action"
+					"iscsi_action",
+					"backup_save",
+					"backup_run"
 				]
 			},
 			"uci": [

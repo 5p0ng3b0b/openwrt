@@ -306,6 +306,117 @@ E('pre', { 'style': 'font-size:12px; padding:8px; background:rgba(0,0,0,0.18); b
 )));
 }
 
+var callBackupList = rpc.declare({ object: 'volmgr', method: 'backup_list', expect: new Object() });
+var callBackupSave = rpc.declare({ object: 'volmgr', method: 'backup_save', params: new Array('action', 'id', 'name', 'source', 'dest', 'mode', 'schedule', 'enabled'), expect: new Object() });
+var callBackupRun = rpc.declare({ object: 'volmgr', method: 'backup_run', params: new Array('id'), expect: new Object() });
+
+function parseUciBackupJobs(raw) {
+var map = new Object();
+(raw || '').split('\n').forEach(function(line) {
+var m = line.match(/^volmgr_backup\.([^.=]+)\.([^=]+)='?(.*?)'?$/);
+if (m) {
+var id = m.at(1), k = m.at(2), v = m.at(3);
+if (!map.hasOwnProperty(id)) map.valueOf()[id] = { id: id };
+Object.defineProperty(map, id, { value: Object.assign(new Object(), Reflect.get(map, id), Object.fromEntries(new Array(new Array(k, v)))), enumerable: true, configurable: true, writable: true });
+}
+});
+return Object.values(map);
+}
+
+function buildBackupTabView(self) {
+var wrap = E('div', new Object());
+var listBox = E('div', { 'style': 'margin-top:10px;' }, E('em', new Object(), _('Loading rsync backup jobs...')));
+
+var openJobModal = function(existing) {
+var job = existing || new Object();
+var nameIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': job.name || 'NAS Daily Backup' });
+var srcIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': job.source || '/mnt/sda1/', 'placeholder': '/mnt/sda1/' });
+var dstIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': job.dest || '/mnt/sdb1/backup/', 'placeholder': '/mnt/sdb1/backup/ or user@host:/path' });
+var modeSel = E('select', { 'class': 'cbi-input-select' }, new Array(
+E('option', { 'value': 'mirror', 'selected': (job.mode || 'mirror') === 'mirror' ? 'selected' : null }, _('Mirror (rsync -aH --delete)')),
+E('option', { 'value': 'copy', 'selected': job.mode === 'copy' ? 'selected' : null }, _('Additive Sync (rsync -aH, keep deleted files)')),
+E('option', { 'value': 'snapshot', 'selected': job.mode === 'snapshot' ? 'selected' : null }, _('Dated Snapshot Folder (snap_YYYYMMDD_HHMMSS)'))
+));
+var schedSel = E('select', { 'class': 'cbi-input-select' }, new Array(
+E('option', { 'value': '', 'selected': !job.schedule ? 'selected' : null }, _('Manual Only (No Cron Schedule)')),
+E('option', { 'value': '0 * * * *', 'selected': job.schedule === '0 * * * *' ? 'selected' : null }, _('Hourly (0 * * * *)')),
+E('option', { 'value': '0 3 * * *', 'selected': job.schedule === '0 3 * * *' ? 'selected' : null }, _('Daily at 03:00 (0 3 * * *)')),
+E('option', { 'value': '0 3 * * 0', 'selected': job.schedule === '0 3 * * 0' ? 'selected' : null }, _('Weekly Sunday 03:00 (0 3 * * 0)'))
+));
+var enChk = E('input', { 'type': 'checkbox', 'checked': (job.enabled || '1') === '1' ? 'checked' : null });
+
+ui.showModal(job.id ? _('Edit Rsync Backup Job') : _('Add Rsync Backup Job'), new Array(
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Job Name')), E('div', { 'class': 'cbi-value-field' }, new Array(nameIn)))),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Source Path')), E('div', { 'class': 'cbi-value-field' }, new Array(srcIn)))),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Destination Path')), E('div', { 'class': 'cbi-value-field' }, new Array(dstIn)))),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Sync Mode')), E('div', { 'class': 'cbi-value-field' }, new Array(modeSel)))),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Schedule')), E('div', { 'class': 'cbi-value-field' }, new Array(schedSel)))),
+E('div', { 'class': 'cbi-value' }, new Array(E('label', { 'class': 'cbi-value-title' }, _('Enabled')), E('div', { 'class': 'cbi-value-field' }, new Array(enChk)))),
+E('div', { 'class': 'right', 'style': 'margin-top:12px;' }, new Array(
+E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')), ' ',
+E('button', { 'class': 'cbi-button cbi-button-action', 'click': function() {
+ui.hideModal();
+callBackupSave('save', job.id || '', nameIn.value.trim(), srcIn.value.trim(), dstIn.value.trim(), modeSel.value, schedSel.value, enChk.checked ? '1' : '0').then(function(r) {
+if (r && r.error) ui.addNotification(null, E('p', new Object(), r.error), 'error');
+else { ui.addNotification(null, E('p', new Object(), _('Backup job saved.')), 'info'); self.renderMain(); }
+});
+} }, _('Save Job'))
+))
+));
+};
+callBackupList().then(function(res) {
+listBox.innerHTML = '';
+var jobs = parseUciBackupJobs((res && res.jobs) || '');
+var logTxt = (res && res.log) || '';
+
+var rows = jobs.map(function(j) {
+var stBadge = j.last_status === 'OK'
+? E('span', { 'style': 'color:#2e7d32; font-weight:600;' }, 'OK (' + (j.last_run || '') + ')')
+: (j.last_status === 'FAILED'
+? E('span', { 'style': 'color:#c62828; font-weight:600;' }, 'FAILED (' + (j.last_run || '') + ')')
+: E('em', new Object(), _('Never run')));
+return E('tr', { 'class': 'tr' }, new Array(
+E('td', { 'class': 'td' }, E('strong', new Object(), j.name || j.id)),
+E('td', { 'class': 'td' }, (j.source || '') + ' -> ' + (j.dest || '')),
+E('td', { 'class': 'td' }, j.mode || 'mirror'),
+E('td', { 'class': 'td' }, j.schedule || _('Manual')),
+E('td', { 'class': 'td' }, stBadge),
+E('td', { 'class': 'td' }, new Array(
+E('button', { 'class': 'cbi-button cbi-button-action', 'click': function() {
+self.runWithProgress(_('Running Backup: ') + (j.name || j.id), callBackupRun(j.id), function() { self.renderMain(); });
+} }, _('Run Now')), ' ',
+E('button', { 'class': 'cbi-button', 'click': function() { openJobModal(j); } }, _('Edit')), ' ',
+E('button', { 'class': 'cbi-button cbi-button-negative', 'click': function() {
+callBackupSave('delete', j.id, '', '', '', '', '', '').then(function() { self.renderMain(); });
+} }, _('Delete'))
+))
+));
+});
+
+listBox.appendChild(E('div', { 'class': 'cbi-section-node', 'style': 'padding:12px; border:1px solid rgba(128,128,128,0.25); border-radius:6px; margin-bottom:14px;' }, new Array(
+E('div', { 'style': 'display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;' }, new Array(
+E('h4', { 'style': 'margin:0;' }, _('Scheduled & Manual Rsync Backup Jobs')),
+E('button', { 'class': 'cbi-button cbi-button-action', 'click': function() { openJobModal(null); } }, _('Add Backup Job'))
+)),
+rows.length ? E('table', { 'class': 'table' }, new Array(
+E('tr', { 'class': 'tr table-titles' }, new Array(
+E('th', { 'class': 'th' }, _('Name')), E('th', { 'class': 'th' }, _('Source -> Destination')),
+E('th', { 'class': 'th' }, _('Mode')), E('th', { 'class': 'th' }, _('Schedule')),
+E('th', { 'class': 'th' }, _('Last Status')), E('th', { 'class': 'th' }, _('Actions'))
+))
+).concat(rows)) : E('em', new Object(), _('No rsync backup jobs configured yet. Click "Add Backup Job" to create one.'))
+)));
+
+listBox.appendChild(E('div', { 'class': 'cbi-section-node', 'style': 'padding:12px; border:1px solid rgba(128,128,128,0.25); border-radius:6px;' }, new Array(
+E('h4', { 'style': 'margin-top:0; margin-bottom:8px;' }, _('Recent Rsync Log (/tmp/volmgr-backup.log)')),
+E('pre', { 'style': 'font-size:12px; padding:8px; background:rgba(0,0,0,0.18); border-radius:4px; overflow:auto; max-height:200px;' }, (logTxt || _('No backup log entries yet.')).trim())
+)));
+});
+
+wrap.appendChild(listBox);
+return wrap;
+}
+
 return view.extend({
 selectedDisk: null,
 selectedItem: null,
@@ -1526,7 +1637,7 @@ else if (this.activeTab === 'mounts') body = this.renderMountsTab();
 else if (this.activeTab === 'info') body = this.renderInfoTab();
 else if (this.activeTab === 'config') body = this.renderConfigTab();
 else if (this.activeTab === 'volumes') body = buildVolumesTabView(this);
-else body = E('div', { 'class': 'cbi-section' }, E('p', {}, _('Phase 3: Scheduled Rsync Mirror & Versioned Snapshot Jobs.')));
+else body = buildBackupTabView(this);
 
 this.rootNode.innerHTML = '';
 this.rootNode.appendChild(E('h2', {}, _('Volume Manager')));

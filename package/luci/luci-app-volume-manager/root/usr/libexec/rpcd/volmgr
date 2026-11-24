@@ -477,6 +477,14 @@ json_close_object
 json_add_object "iscsi_action"
 json_add_string "action" "string"; json_add_string "portal" "string"; json_add_string "iqn" "string"; json_add_string "backing" "string"; json_add_int "tid" 1
 json_close_object
+json_add_object "backup_list"
+json_close_object
+json_add_object "backup_save"
+json_add_string "action" "string"; json_add_string "id" "string"; json_add_string "name" "string"; json_add_string "source" "string"; json_add_string "dest" "string"; json_add_string "mode" "string"; json_add_string "schedule" "string"; json_add_string "enabled" "string"
+json_close_object
+json_add_object "backup_run"
+json_add_string "id" "string"
+json_close_object
 json_dump
 ;;
 call)
@@ -850,6 +858,88 @@ fi
 ;;
 *) echo '{"error":"Invalid iscsi_action"}'; exit 0 ;;
 esac
+;;
+backup_list)
+touch /etc/config/volmgr_backup
+jobs_raw=$(uci show volmgr_backup 2>/dev/null || true)
+blog=$(tail -n 30 /tmp/volmgr-backup.log 2>/dev/null || true)
+json_init
+json_add_string "jobs" "$jobs_raw"
+json_add_string "log" "$blog"
+json_dump
+;;
+backup_save)
+json_get_vars action id name source dest mode schedule enabled
+touch /etc/config/volmgr_backup
+case "$action" in
+save)
+test -n "$name" && test -n "$source" && test -n "$dest" || { echo '{"error":"Name, source, and destination required"}'; exit 0; }
+test -z "$id" && id="job_$(date +%s)"
+test -z "$mode" && mode="mirror"
+test -z "$enabled" && enabled="1"
+uci set "volmgr_backup.${id}=job"
+uci set "volmgr_backup.${id}.name=${name}"
+uci set "volmgr_backup.${id}.source=${source}"
+uci set "volmgr_backup.${id}.dest=${dest}"
+uci set "volmgr_backup.${id}.mode=${mode}"
+uci set "volmgr_backup.${id}.schedule=${schedule}"
+uci set "volmgr_backup.${id}.enabled=${enabled}"
+uci commit volmgr_backup
+mkdir -p /etc/crontabs
+touch /etc/crontabs/root
+sed -i '/# volmgr-backup/d' /etc/crontabs/root
+for sec in $(uci show volmgr_backup 2>/dev/null | sed -n 's/^volmgr_backup\.\([^.=]*\)=job$/\1/p'); do
+en=$(uci -q get "volmgr_backup.${sec}.enabled" || echo "1")
+sc=$(uci -q get "volmgr_backup.${sec}.schedule" || true)
+if test "$en" = "1" && test -n "$sc"; then
+printf '%s ubus call volmgr backup_run '''{"id":"%s"}''' >/dev/null 2>&1 # volmgr-backup
+' "$sc" "$sec" >> /etc/crontabs/root
+fi
+done
+/etc/init.d/cron reload >/dev/null 2>&1 || true
+echo '{"ok":true}'
+;;
+delete)
+test -n "$id" || { echo '{"error":"Job ID required"}'; exit 0; }
+uci delete "volmgr_backup.${id}" 2>/dev/null || true
+uci commit volmgr_backup
+sed -i '/# volmgr-backup/d' /etc/crontabs/root 2>/dev/null || true
+/etc/init.d/cron reload >/dev/null 2>&1 || true
+echo '{"ok":true}'
+;;
+*) echo '{"error":"Invalid backup_save action"}'; exit 0 ;;
+esac
+;;
+backup_run)
+json_get_vars id
+command -v rsync >/dev/null 2>&1 || { echo '{"error":"rsync not installed (enable in Config tab)"}'; exit 0; }
+src=$(uci -q get "volmgr_backup.${id}.source" || true)
+dst=$(uci -q get "volmgr_backup.${id}.dest" || true)
+mod=$(uci -q get "volmgr_backup.${id}.mode" || echo "mirror")
+test -n "$src" && test -n "$dst" || { echo '{"error":"Backup job not found"}'; exit 0; }
+(
+t0=$(date +%s)
+write_job "running" 10 "Running rsync ($mod): $src -> $dst" "$t0" 30 ""
+flags="-aH"
+test "$mod" = "mirror" && flags="-aH --delete"
+if test "$mod" = "snapshot"; then
+snap_dir="${dst%/}/snap_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$snap_dir" 2>/dev/null || true
+dst="$snap_dir"
+fi
+if rsync $flags "$src" "$dst" >> /tmp/volmgr-backup.log 2>&1; then
+uci set "volmgr_backup.${id}.last_run=$(date '+%Y-%m-%d %H:%M:%S')"
+uci set "volmgr_backup.${id}.last_status=OK"
+uci commit volmgr_backup
+write_job "done" 100 "Backup Completed" "$t0" 0 "Synced $src -> $dst"
+else
+uci set "volmgr_backup.${id}.last_run=$(date '+%Y-%m-%d %H:%M:%S')"
+uci set "volmgr_backup.${id}.last_status=FAILED"
+uci commit volmgr_backup
+write_job "error" 100 "Backup Failed" "$t0" 0 "rsync failed (see /tmp/volmgr-backup.log)"
+fi
+) >/dev/null 2>&1 &
+echo '{"started":true}'
 ;;
 esac
 ;;
