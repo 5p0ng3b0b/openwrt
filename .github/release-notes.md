@@ -9,6 +9,10 @@ Custom OpenWrt build (Linux 6.18 / U-Boot 2026.10) for the **Lenovo Iomega ix4-3
 | `*-squashfs-factory.img` | Full NAND image (U-Boot + kernel + rootfs UBI) for fresh installs. |
 | `*-squashfs-sysupgrade.bin` | Standard upgrade image for systems already running OpenWrt (`sysupgrade`). |
 | `*-initramfs-kernel.bin` | RAM-bootable OpenWrt image for TFTP/USB recovery or initial flashing. |
+| `kernel.bin` | Standalone Linux 6.18 kernel (`zImage` + appended DTB, no initramfs) for booting external USB/SATA rootfs. |
+| `zImage` | Raw standalone Linux 6.18 `zImage` (no initramfs, no appended DTB) for custom Linux distributions. |
+| `armada-xp-lenovo-ix4-300d.dtb` | Compiled Linux 6.18 Device Tree binary blob (`dtb`). |
+| `kernel-ix4-300d.config` | Complete compiled Linux 6.18 kernel configuration file (`.config`). |
 | `u-boot-with-spl.kwb` | Complete Marvell BootROM NAND bootloader image (SPL + U-Boot + 2048-byte page header). |
 | `u-boot.bin` | Raw U-Boot payload (no BootROM header) for direct RAM testing at `0x00800000`. |
 | `ix4-lcd-*.apk` | Front-panel ST7565R LCD daemon, marquee scroller, and button handler (`BTN_0` / `BTN_1`). |
