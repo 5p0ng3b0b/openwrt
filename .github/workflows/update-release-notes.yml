@@ -1,0 +1,31 @@
+name: Update Release Notes Only (Lenovo Iomega ix4-300d)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Target GitHub Release tag (leave blank to update latest release)'
+        required: false
+        default: ''
+
+jobs:
+  update-notes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Update GitHub Release body from .github/release-notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.release_tag }}"
+          if test -z "$TAG"; then
+            TAG=$(gh release view --json tagName -q .tagName)
+          fi
+          test -n "$TAG"
+          echo "Updating release notes for tag: $TAG"
+          gh release edit "$TAG" --notes-file .github/release-notes.md
