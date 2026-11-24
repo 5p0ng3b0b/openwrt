@@ -39,8 +39,8 @@ jobs:
 
       - name: Configure Full NAS Sysupgrade (Lenovo Iomega ix4-300d)
         run: |
-          if test -f target/linux/mvebu/cortexa9/config-ix4-300d; then
-            cp target/linux/mvebu/cortexa9/config-ix4-300d .config
+          if test -f target/linux/mvebu/cortexa9/config-ix4-300d-full; then
+            cp target/linux/mvebu/cortexa9/config-ix4-300d-full .config
           fi
           printf '%s\n' \
             CONFIG_TARGET_mvebu=y \
