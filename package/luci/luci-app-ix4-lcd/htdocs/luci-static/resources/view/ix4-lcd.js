@@ -155,13 +155,13 @@ if (pane) {
 var vals = Array.prototype.slice.call(pane.children).filter(function(el) {
 return el.classList && el.classList.contains('cbi-value');
 });
-if (vals.length >= 12) {
-var c0 = vals.at(0), c1 = vals.at(7), c2 = vals.at(10), upItem = vals.at(11);
+if (vals.length >= 13) {
+var c0 = vals.at(0), c1 = vals.at(8), c2 = vals.at(11), c3 = vals.at(7), upItem = vals.at(12);
 c0.title = _('Start the ix4-lcd daemon at boot to drive the front-panel 128x64 LCD and handle front-panel buttons.');
 c1.title = _('Automatically rotate through all visible display pages using the Refresh Interval.');
 c2.title = _('When enabled, changes made with the physical front-panel LCD buttons (cycle pages, backlight, polarity, active page) are saved to /etc/config/ix4-lcd so they survive reboots.');
 upItem.title = _('Upload a 128x64 monochrome (1-bit) Windows BMP image to /etc/ix4-lcd/ for use as a page background.');
-[c0, c1, c2, upItem].forEach(function(item) {
+[c0, c1, c2, c3, upItem].forEach(function(item) {
 item.style.cssText = 'display:inline-flex !important; flex-direction:row !important; flex-wrap:nowrap !important; align-items:center !important; gap:8px !important; margin:0 !important; padding:4px 0 !important; width:auto !important; flex:0 0 auto !important;';
 var l = item.querySelector('.cbi-value-title');
 var f = item.querySelector('.cbi-value-field');
@@ -169,11 +169,11 @@ if (l) l.style.cssText = 'display:inline-block !important; flex:0 0 auto !import
 if (f) f.style.cssText = 'display:inline-flex !important; flex:0 0 auto !important; flex-basis:auto !important; align-items:center !important; width:auto !important; min-width:0 !important; float:none !important; margin:0 !important; padding:0 !important;';
 });
 var topChecks = E('div', { style: 'display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px 24px; width:100%; box-sizing:border-box; border-bottom:1px solid rgba(128,128,128,0.2); margin-bottom:12px; padding-bottom:8px;' }, [
-c0, c1, c2, upItem
+c0, c1, c2, c3, upItem
 ]);
 var midGrid = E('div', { style: 'display:grid; grid-template-columns:repeat(2, minmax(280px, 1fr)); gap:0 28px;' }, [
 E('div', {}, [vals.at(1), vals.at(2), vals.at(3), vals.at(6)]),
-E('div', {}, [vals.at(4), vals.at(5), vals.at(8), vals.at(9)])
+E('div', {}, [vals.at(4), vals.at(5), vals.at(9), vals.at(10)])
 ]);
 pane.appendChild(topChecks);
 pane.appendChild(midGrid);
@@ -219,6 +219,9 @@ o.datatype = 'min(1)'; o.default = '5';
 o = s.taboption('settings', form.Value, 'screensaver', _('Screensaver (seconds)'),
 _('Turn off LCD and backlight after N seconds of inactivity (0 = disabled). Any front-panel button wakes the display.'));
 o.datatype = 'uinteger'; o.default = '0'; o.placeholder = '0';
+
+o = s.taboption('settings', form.Flag, 'alert_wake', _('Alert Wake & Red LED'));
+o.default = '1';
 
 o = s.taboption('settings', form.Flag, 'auto_scroll', _('Cycle Pages'));
 o.default = '0';
