@@ -3,10 +3,10 @@ Subject: [PATCH] ARM: dts: mvebu: ix4-300d: reserve 512 KiB ramoops pstore buffe
 
 Signed-off-by: Bob Sponge <myandroidiptvbox@gmail.com>
 ---
---- a/arch/arm/boot/dts/marvell/armada-xp-lenovo-ix4-300d.dts
-+++ b/arch/arm/boot/dts/marvell/armada-xp-lenovo-ix4-300d.dts
-@@ -27,6 +27,23 @@
- 		reg = <0 0x00000000 0 0x20000000>; /* 512 MB */
+--- a/arch/arm/boot/dts/marvell/armada-xp-lenovo-ix4-300d.dts.orig	2026-11-25 21:48:08.743104018 +0000
++++ a/arch/arm/boot/dts/marvell/armada-xp-lenovo-ix4-300d.dts	2026-11-25 21:48:08.760505185 +0000
+@@ -25,6 +25,21 @@
+ 		reg = <0 0x00000000 0 0x20000000>; /* 512MB */
  	};
  
 +	reserved-memory {
@@ -25,3 +25,5 @@ Signed-off-by: Bob Sponge <myandroidiptvbox@gmail.com>
 +	};
 +
  	soc {
+ 		ranges = <MBUS_ID(0xf0, 0x01) 0 0 0xd0000000 0x100000
+ 			MBUS_ID(0x01, 0x1d) 0 0 0xfff00000 0x100000
