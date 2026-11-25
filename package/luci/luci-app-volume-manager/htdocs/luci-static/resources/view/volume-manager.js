@@ -1701,7 +1701,7 @@ var self = this;
 if (!this.rootNode) return;
 var tabs = [
 { id: 'disk', title: _('Disk') },
-{ id: 'mounts', title: _('Mounts') },
+{ id: 'mounts', title: _('Mounts & Sharing') },
 { id: 'info', title: _('Info') },
 { id: 'volumes', title: _('Volumes (RAID / LVM / iSCSI)') },
 { id: 'backup', title: _('Backup (Rsync)') },
