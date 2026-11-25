@@ -1371,20 +1371,38 @@ E('th', { 'class': 'th' }, _('Options')), E('th', { 'class': 'th' }, _('Actions'
 ])
 ];
 
+var openEditMount = function(sec) {
+var tgtIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': sec.target || '/mnt/storage' });
+var optIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': sec.options || 'defaults,noatime,nofail' });
+ui.showModal(_('Edit Mount Point'), [
+E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Mount Point')), E('div', { 'class': 'cbi-value-field' }, [ tgtIn ]) ]),
+E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Mount Options')), E('div', { 'class': 'cbi-value-field' }, [ optIn ]) ]),
+E('div', { 'class': 'right' }, [ E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')), ' ', E('button', { 'class': 'btn cbi-button-apply important', 'click': function() {
+uci.set('fstab', sec['.name'], 'target', tgtIn.value.trim()); uci.set('fstab', sec['.name'], 'options', optIn.value.trim()); ui.hideModal();
+uci.save().then(function() { return uci.apply(); }).then(function() { return callMountAct('block_mount', '', ''); }).then(function() { self.refreshAll(); });
+} }, _('Save')) ])
+]);
+};
 mounts.forEach(function(sec) {
-var sid = sec['.name'];
+var sid = sec['.name'], partObj = allParts.filter(function(p) { return p.uuid === sec.uuid; }).at(0);
+var isMounted = !!(partObj && partObj.mountpoint), devNode = partObj ? ('/dev/' + partObj.name) : (sec.device || '');
+var enCb = E('input', { 'type': 'checkbox', 'checked': sec.enabled !== '0' ? true : null, 'change': function() {
+uci.set('fstab', sid, 'enabled', enCb.checked ? '1' : '0');
+uci.save().then(function() { return uci.apply(); }).then(function() { return callMountAct('block_mount', '', ''); }).then(function() { self.refreshAll(); });
+} });
 rows.push(E('tr', { 'class': 'tr' }, [
-E('td', { 'class': 'td' }, sec.enabled === '0' ? _('No') : _('Yes')),
-E('td', { 'class': 'td' }, sec.uuid ? ('UUID=' + sec.uuid) : (sec.device || '—')),
-E('td', { 'class': 'td' }, sec.target || '—'),
-E('td', { 'class': 'td' }, sec.fstype || 'auto'),
+E('td', { 'class': 'td' }, [ enCb, ' ', isMounted ? E('span', { 'style': 'color:#4caf50; font-weight:600;' }, _('Mounted')) : E('span', { 'style': 'opacity:0.65;' }, _('Unmounted')) ]),
+E('td', { 'class': 'td' }, (partObj ? ('/dev/' + partObj.name + ' · ') : '') + (sec.uuid ? ('UUID=' + sec.uuid) : (sec.device || '—'))),
+E('td', { 'class': 'td' }, (partObj && partObj.mountpoint) || sec.target || '—'),
+E('td', { 'class': 'td' }, (partObj && partObj.fstype) || sec.fstype || 'auto'),
 E('td', { 'class': 'td' }, sec.options || 'defaults'),
 E('td', { 'class': 'td' }, [
-sec.target ? E('button', { 'class': 'btn cbi-button-action', 'style': 'margin-right:6px;', 'click': function() { buildSmbModal(self, sec.target); } }, _('Share (SMB)')) : E('span', new Object()),
-E('button', { 'class': 'btn cbi-button-negative', 'click': function() {
-uci.remove('fstab', sid);
-uci.save().then(function() { return uci.apply(); }).then(function() { self.refreshAll(); });
-} }, _('Delete'))
+devNode ? E('button', { 'class': 'btn', 'style': 'margin-right:6px;', 'click': function() {
+callMountAct(isMounted ? 'umount' : 'mount', devNode, sec.target || ('/mnt/' + partObj.name)).then(function(r) { if (r && r.error) ui.addNotification(null, E('p', r.error), 'error'); else self.refreshAll(); });
+} }, isMounted ? _('Unmount') : _('Mount')) : E('span', new Object()),
+E('button', { 'class': 'btn', 'style': 'margin-right:6px;', 'click': function() { openEditMount(sec); } }, _('Edit')),
+sec.target ? E('button', { 'class': 'btn cbi-button-action', 'style': 'margin-right:6px;', 'click': function() { buildSmbModal(self, (partObj && partObj.mountpoint) || sec.target); } }, _('Share (SMB)')) : E('span', new Object()),
+E('button', { 'class': 'btn cbi-button-negative', 'click': function() { uci.remove('fstab', sid); uci.save().then(function() { return uci.apply(); }).then(function() { self.refreshAll(); }); } }, _('Delete'))
 ])
 ]));
 });
