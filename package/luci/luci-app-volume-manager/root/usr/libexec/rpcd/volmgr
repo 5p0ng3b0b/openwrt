@@ -485,6 +485,13 @@ json_close_object
 json_add_object "backup_run"
 json_add_string "id" "string"
 json_close_object
+json_add_object "share_list"
+json_close_object
+json_add_object "share_action"
+json_add_string "action" "string"; json_add_string "section" "string"; json_add_string "name" "string"
+json_add_string "path" "string"; json_add_string "user" "string"; json_add_string "password" "string"
+json_add_string "read_only" "string"; json_add_string "guest_ok" "string"; json_add_string "remove_user" "string"
+json_close_object
 json_dump
 ;;
 call)
@@ -941,6 +948,80 @@ fi
 ) >/dev/null 2>&1 &
 echo '{"started":true}'
 ;;
+esac
+;;
+share_list)
+shares_uci=$(uci show ksmbd 2>/dev/null || true)
+smb_users=$(awk -F: 'NF>=1 && $1!="" {print $1}' /etc/ksmbd/ksmbdpwd.db 2>/dev/null | tr '\n' ' ' || true)
+has_ksmbd=0
+command -v ksmbd.adduser >/dev/null 2>&1 && has_ksmbd=1
+json_init
+json_add_boolean "installed" "$has_ksmbd"
+json_add_string "shares" "$shares_uci"
+json_add_string "smb_users" "$smb_users"
+json_dump
+;;
+share_action)
+json_get_vars action section name path user password read_only guest_ok remove_user
+command -v ksmbd.adduser >/dev/null 2>&1 || { echo '{"error":"ksmbd-server not installed (enable in Config tab)"}'; exit 0; }
+case "$action" in
+create)
+test -n "$name" && test -n "$path" || { echo '{"error":"Share name and folder path are required"}'; exit 0; }
+printf '%s' "$name" | grep -Eq '^[A-Za-z0-9._-]+$' || { echo '{"error":"Invalid share name (use letters, numbers, _, -, .)"}'; exit 0; }
+case "$path" in /mnt/*|/srv/*|/opt/*|/tmp/*) ;; *) echo '{"error":"Share path must be under /mnt, /srv, /opt, or /tmp"}'; exit 0 ;; esac
+mkdir -p "$path" 2>/dev/null || true
+test -d "$path" || { echo '{"error":"Folder path does not exist and could not be created"}'; exit 0; }
+if test "$guest_ok" != "yes"; then
+test -n "$user" && test -n "$password" || { echo '{"error":"Username and password are required for Windows 11 authenticated shares"}'; exit 0; }
+printf '%s' "$user" | grep -Eq '^[a-z_][a-z0-9_-]*$' || { echo '{"error":"Invalid Linux username (lowercase letters, digits, _, -)"}'; exit 0; }
+if ! grep -q "^${user}:" /etc/passwd 2>/dev/null; then
+next_uid=$(awk -F: '$3>=1000 && $3<65000 {if ($3>=m) m=$3} END {print (m?m+1:1000)}' /etc/passwd)
+echo "${user}:x:${next_uid}:65534:SMB Share User:/var/run/empty:/bin/false" >> /etc/passwd
+echo "${user}:!:19000:0:99999:7:::" >> /etc/shadow
+fi
+if grep -q "^${user}:" /etc/ksmbd/ksmbdpwd.db 2>/dev/null; then
+printf '%s\n%s\n' "$password" "$password" | ksmbd.adduser -u "$user" >> "$LOG_FILE" 2>&1 || { echo '{"error":"Failed to update ksmbd user password"}'; exit 0; }
+else
+printf '%s\n%s\n' "$password" "$password" | ksmbd.adduser -a "$user" >> "$LOG_FILE" 2>&1 || { echo '{"error":"Failed to add ksmbd user"}'; exit 0; }
+fi
+fi
+sid=$(uci add ksmbd share)
+uci set "ksmbd.${sid}.name=${name}"
+uci set "ksmbd.${sid}.path=${path}"
+uci set "ksmbd.${sid}.read_only=${read_only:-no}"
+uci set "ksmbd.${sid}.guest_ok=${guest_ok:-no}"
+uci set "ksmbd.${sid}.create_mask=0664"
+uci set "ksmbd.${sid}.dir_mask=0775"
+uci set "ksmbd.${sid}.force_root=1"
+if test "$guest_ok" != "yes"; then
+uci set "ksmbd.${sid}.users=${user}"
+fi
+uci commit ksmbd
+/etc/init.d/ksmbd enable >/dev/null 2>&1 || true
+/etc/init.d/ksmbd restart >/dev/null 2>&1 || true
+if test -x /etc/init.d/wsdd2; then
+/etc/init.d/wsdd2 enable >/dev/null 2>&1 || true
+/etc/init.d/wsdd2 restart >/dev/null 2>&1 || true
+fi
+echo '{"ok":true}'
+;;
+remove)
+test -n "$section" || { echo '{"error":"Share section required"}'; exit 0; }
+sh_user=$(uci -q get "ksmbd.${section}.users" || true)
+uci delete "ksmbd.${section}" >/dev/null 2>&1 || { echo '{"error":"Share section not found"}'; exit 0; }
+uci commit ksmbd
+/etc/init.d/ksmbd restart >/dev/null 2>&1 || true
+test -x /etc/init.d/wsdd2 && /etc/init.d/wsdd2 restart >/dev/null 2>&1 || true
+if test "$remove_user" = "1" && test -n "$sh_user" && test "$sh_user" != "root"; then
+ksmbd.adduser -d "$sh_user" >> "$LOG_FILE" 2>&1 || true
+uid_val=$(awk -F: -v u="$sh_user" '$1==u {print $3}' /etc/passwd 2>/dev/null || true)
+if test -n "$uid_val" && test "$uid_val" -ge 1000 2>/dev/null; then
+sed -i "/^${sh_user}:/d" /etc/passwd /etc/shadow 2>/dev/null || true
+fi
+fi
+echo '{"ok":true}'
+;;
+*) echo '{"error":"Invalid share_action"}'; exit 0 ;;
 esac
 ;;
 esac

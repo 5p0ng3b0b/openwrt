@@ -10,7 +10,8 @@
 					"packages",
 					"job_status",
 					"volumes_status",
-					"backup_list"
+					"backup_list",
+                                        "share_list"
 				],
 				"file": [
 					"read",
@@ -45,7 +46,8 @@
 					"lvm_action",
 					"iscsi_action",
 					"backup_save",
-					"backup_run"
+					"backup_run",
+                                        "share_action"
 				]
 			},
 			"uci": [

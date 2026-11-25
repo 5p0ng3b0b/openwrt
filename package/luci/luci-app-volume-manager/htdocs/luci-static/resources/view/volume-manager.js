@@ -20,6 +20,32 @@ var callMovePart = rpc.declare({ object: 'volmgr', method: 'move_part', params: 
 var callDeletePart = rpc.declare({ object: 'volmgr', method: 'delete_part', params: ['disk', 'num'], expect: {} });
 var callSetMeta = rpc.declare({ object: 'volmgr', method: 'set_part_meta', params: ['disk', 'num', 'label', 'fstype', 'role', 'flags'], expect: {} });
 var callMountAct = rpc.declare({ object: 'volmgr', method: 'mount_action', params: ['action', 'part', 'target'], expect: {} });
+var callShareList = rpc.declare({ object: 'volmgr', method: 'share_list', expect: new Object() });
+var callShareAction = rpc.declare({ object: 'volmgr', method: 'share_action', params: new Array('action', 'section', 'name', 'path', 'user', 'password', 'read_only', 'guest_ok', 'remove_user'), expect: new Object() });
+function buildSmbModal(self, defaultPath) {
+  var baseName = (defaultPath || '/mnt/storage').split('/').filter(Boolean).pop() || 'NAS_Share';
+  var nameIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': baseName.replace(/[^A-Za-z0-9._-]/g, '_') });
+  var pathIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': defaultPath || '/mnt/storage' });
+  var authSel = E('select', { 'class': 'cbi-input-select' }, [ E('option', { 'value': 'no' }, _('Authenticated SMB User (Recommended for Windows 11)')), E('option', { 'value': 'yes' }, _('Guest / Public (Windows 11 blocks guest SMB by default)')) ]);
+  var userIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': 'nasuser' });
+  var passIn = E('input', { 'type': 'password', 'class': 'cbi-input-text', 'placeholder': _('SMB password for Windows 11 login') });
+  var roSel = E('select', { 'class': 'cbi-input-select' }, [ E('option', { 'value': 'no' }, _('Read / Write')), E('option', { 'value': 'yes' }, _('Read Only')) ]);
+  var userRow = E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('SMB Username')), E('div', { 'class': 'cbi-value-field' }, [ userIn, E('div', { 'style': 'font-size:12px; opacity:0.85; margin-top:4px;' }, _('Creates /etc/passwd + ksmbd user automatically and enables wsdd2 discovery.')) ]) ]);
+  var passRow = E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('SMB Password')), E('div', { 'class': 'cbi-value-field' }, [ passIn ]) ]);
+  authSel.addEventListener('change', function() { var g = authSel.value === 'yes'; userRow.style.display = g ? 'none' : ''; passRow.style.display = g ? 'none' : ''; });
+  ui.showModal(_('Share Folder over SMB (Windows 11 / ksmbd)'), [
+    E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Share Name')), E('div', { 'class': 'cbi-value-field' }, [ nameIn ]) ]),
+    E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Folder Path')), E('div', { 'class': 'cbi-value-field' }, [ pathIn ]) ]),
+    E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Access Mode')), E('div', { 'class': 'cbi-value-field' }, [ authSel ]) ]),
+    userRow, passRow,
+    E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Permissions')), E('div', { 'class': 'cbi-value-field' }, [ roSel ]) ]),
+    E('div', { 'class': 'right' }, [ E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')), ' ', E('button', { 'class': 'btn cbi-button-apply important', 'click': function() {
+      ui.hideModal(); callShareAction('create', '', nameIn.value.trim(), pathIn.value.trim(), userIn.value.trim(), passIn.value, roSel.value, authSel.value, '0').then(function(r) {
+        if (r && r.error) ui.addNotification(null, E('p', r.error), 'error'); else { ui.addNotification(null, E('p', _('SMB share created and ksmbd reloaded.')), 'info'); self.refreshAll(); }
+      });
+    } }, _('Create SMB Share')) ])
+  ]);
+}
 var callPkgAct = rpc.declare({ object: 'volmgr', method: 'pkg_action', params: ['action', 'packages'], expect: {} });
 
 /* ==========================================================================
@@ -1354,6 +1380,7 @@ E('td', { 'class': 'td' }, sec.target || '—'),
 E('td', { 'class': 'td' }, sec.fstype || 'auto'),
 E('td', { 'class': 'td' }, sec.options || 'defaults'),
 E('td', { 'class': 'td' }, [
+sec.target ? E('button', { 'class': 'btn cbi-button-action', 'style': 'margin-right:6px;', 'click': function() { buildSmbModal(self, sec.target); } }, _('Share (SMB)')) : E('span', new Object()),
 E('button', { 'class': 'btn cbi-button-negative', 'click': function() {
 uci.remove('fstab', sid);
 uci.save().then(function() { return uci.apply(); }).then(function() { self.refreshAll(); });
@@ -1395,7 +1422,20 @@ E('div', { 'style': 'display:flex; gap:8px; margin-bottom:12px;' }, [
 E('button', { 'class': 'btn cbi-button-apply important', 'disabled': !allParts.length ? true : null, 'click': openAddMount }, _('Add Mount Point')),
 E('button', { 'class': 'btn', 'click': function() { callMountAct('block_mount', '', '').then(function() { self.refreshAll(); }); } }, _('Mount All (fstab)'))
 ]),
-E('table', { 'class': 'table cbi-section-table' }, rows)
+E('table', { 'class': 'table cbi-section-table' }, rows),
+(function() {
+  var box = E('div', { 'style': 'margin-top:18px;' }, [ E('em', {}, _('Loading SMB shares...')) ]);
+  callShareList().then(function(res) {
+    var raw = (res && res.shares) || '', map = new Object(), hostIp = window.location.hostname || '192.168.5.12';
+    raw.split('\n').forEach(function(l) { var m = l.match(/^ksmbd\.([^.=]+)\.([^=]+)='?(.*?)'?$/); if (m) { if (!map.hasOwnProperty(m.at(1))) map[m.at(1)] = { sec: m.at(1) }; map[m.at(1)][m.at(2)] = m.at(3); } });
+    var list = Object.keys(map).map(function(k) { return map[k]; }).filter(function(s) { return s.name && s.path; });
+    var sRows = [ E('tr', { 'class': 'tr table-titles' }, [ E('th', { 'class': 'th' }, _('Share Name')), E('th', { 'class': 'th' }, _('Folder Path')), E('th', { 'class': 'th' }, _('Access / User')), E('th', { 'class': 'th' }, _('Mode')), E('th', { 'class': 'th' }, _('Windows UNC Path')), E('th', { 'class': 'th' }, _('Actions')) ]) ];
+    list.forEach(function(sh) { sRows.push(E('tr', { 'class': 'tr' }, [ E('td', { 'class': 'td' }, E('strong', {}, sh.name)), E('td', { 'class': 'td' }, sh.path), E('td', { 'class': 'td' }, sh.guest_ok === 'yes' ? _('Guest') : (_('User: ') + (sh.users || 'root'))), E('td', { 'class': 'td' }, sh.read_only === 'yes' ? _('Read Only') : _('Read / Write')), E('td', { 'class': 'td' }, E('code', {}, '\\\\' + hostIp + '\\' + sh.name)), E('td', { 'class': 'td' }, [ E('button', { 'class': 'btn cbi-button-negative', 'click': function() { var rm = (sh.users && sh.users !== 'root') ? '1' : '0'; callShareAction('remove', sh.sec, sh.name, sh.path, sh.users || '', '', '', '', rm).then(function(r) { if (r && r.error) ui.addNotification(null, E('p', r.error), 'error'); else self.refreshAll(); }); } }, _('Unshare')) ]) ])); });
+    box.innerHTML = ''; box.appendChild(E('div', { 'style': 'display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;' }, [ E('h4', { 'style': 'margin:0;' }, _('Active SMB Network Shares (Windows 11 / ksmbd)')), E('button', { 'class': 'btn cbi-button-action', 'click': function() { buildSmbModal(self, '/mnt/'); } }, _('Share Custom Folder (SMB)')) ]));
+    box.appendChild(list.length ? E('table', { 'class': 'table cbi-section-table' }, sRows) : E('p', { 'style': 'opacity:0.75;' }, _('No active SMB shares yet. Click "Share (SMB)" on any mount point above to export a folder for Windows 11.')));
+  });
+  return box;
+})()
 ]);
 },
 
