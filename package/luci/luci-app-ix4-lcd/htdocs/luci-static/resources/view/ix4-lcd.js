@@ -151,8 +151,8 @@ if (pane) {
 var vals = Array.prototype.slice.call(pane.children).filter(function(el) {
 return el.classList && el.classList.contains('cbi-value');
 });
-if (vals.length >= 11) {
-var c0 = vals.at(0), c1 = vals.at(6), c2 = vals.at(9), upItem = vals.at(10);
+if (vals.length >= 12) {
+var c0 = vals.at(0), c1 = vals.at(7), c2 = vals.at(10), upItem = vals.at(11);
 c0.title = _('Start the ix4-lcd daemon at boot to drive the front-panel 128x64 LCD and handle front-panel buttons.');
 c1.title = _('Automatically rotate through all visible display pages using the Refresh Interval.');
 c2.title = _('When enabled, changes made with the physical front-panel LCD buttons (cycle pages, backlight, polarity, active page) are saved to /etc/config/ix4-lcd so they survive reboots.');
@@ -168,8 +168,8 @@ var topChecks = E('div', { style: 'display:flex; flex-wrap:wrap; align-items:cen
 c0, c1, c2, upItem
 ]);
 var midGrid = E('div', { style: 'display:grid; grid-template-columns:repeat(2, minmax(280px, 1fr)); gap:0 28px;' }, [
-E('div', {}, [vals.at(1), vals.at(2), vals.at(3)]),
-E('div', {}, [vals.at(4), vals.at(5), vals.at(7), vals.at(8)])
+E('div', {}, [vals.at(1), vals.at(2), vals.at(3), vals.at(6)]),
+E('div', {}, [vals.at(4), vals.at(5), vals.at(8), vals.at(9)])
 ]);
 pane.appendChild(topChecks);
 pane.appendChild(midGrid);
@@ -211,6 +211,10 @@ o.datatype = 'range(0,63)'; o.default = '38';
 
 o = s.taboption('settings', form.Value, 'refresh', _('Refresh Interval (seconds)'));
 o.datatype = 'min(1)'; o.default = '5';
+
+o = s.taboption('settings', form.Value, 'screensaver', _('Screensaver (seconds)'),
+_('Turn off LCD and backlight after N seconds of inactivity (0 = disabled). Any front-panel button wakes the display.'));
+o.datatype = 'uinteger'; o.default = '0'; o.placeholder = '0';
 
 o = s.taboption('settings', form.Flag, 'auto_scroll', _('Cycle Pages'));
 o.default = '0';
