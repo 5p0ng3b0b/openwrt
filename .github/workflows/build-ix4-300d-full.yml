@@ -49,7 +49,6 @@ jobs:
             CONFIG_PACKAGE_luci=y \
             CONFIG_PACKAGE_luci-ssl=y \
             CONFIG_PACKAGE_luci-app-attendedsysupgrade=y \
-            CONFIG_PACKAGE_luci-app-acl=y \
             CONFIG_PACKAGE_luci-app-filemanager=y \
             CONFIG_PACKAGE_ix4-lcd=y \
             CONFIG_PACKAGE_luci-app-ix4-lcd=y \
