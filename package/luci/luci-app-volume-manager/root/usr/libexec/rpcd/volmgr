@@ -948,8 +948,6 @@ fi
 ) >/dev/null 2>&1 &
 echo '{"started":true}'
 ;;
-esac
-;;
 share_list)
 shares_uci=$(uci show ksmbd 2>/dev/null || true)
 smb_users=$(awk -F: 'NF>=1 && $1!="" {print $1}' /etc/ksmbd/ksmbdpwd.db 2>/dev/null | tr '\n' ' ' || true)
@@ -1022,6 +1020,8 @@ fi
 echo '{"ok":true}'
 ;;
 *) echo '{"error":"Invalid share_action"}'; exit 0 ;;
+esac
+;;
 esac
 ;;
 esac
