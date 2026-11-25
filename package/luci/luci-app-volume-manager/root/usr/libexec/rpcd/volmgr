@@ -857,19 +857,38 @@ command -v tgtadm >/dev/null 2>&1 || { echo '{"error":"tgt not installed (enable
 test -n "$iqn" || { echo '{"error":"Valid IQN required"}'; exit 0; }
 is_safe_dev "$backing" || case "$backing" in /dev/mapper/control) false ;; /dev/mapper/*) test -b "$backing" ;; *) false ;; esac || { echo '{"error":"Valid backing block device required"}'; exit 0; }
 umount "$backing" >/dev/null 2>&1 || true
+if test "$(uci -q get tgt.1.name)" = "iqn.2012-06.org.openwrt:target1"; then
+uci delete tgt.1 2>/dev/null || true
+uci commit tgt 2>/dev/null || true
+tgtadm --lld iscsi --op delete --mode target --tid 1 >/dev/null 2>&1 || true
+fi
 /etc/init.d/tgt enable >/dev/null 2>&1 || true
 /etc/init.d/tgt start >/dev/null 2>&1 || true
 sleep 1
 used_tids=$(tgtadm --lld iscsi --op show --mode target 2>/dev/null | awk '/^Target [0-9]+:/ {gsub(":","",$2); print $2}')
-test -z "$tid" && tid=2
+test -z "$tid" && tid=1
 while printf '%s\n' "$used_tids" | grep -qx "$tid"; do
 tid=$((tid + 1))
 done
 if tgtadm --lld iscsi --op new --mode target --tid "$tid" -T "$iqn" >> "$LOG_FILE" 2>&1 && tgtadm --lld iscsi --op new --mode logicalunit --tid "$tid" --lun 1 -b "$backing" >> "$LOG_FILE" 2>&1 && tgtadm --lld iscsi --op bind --mode target --tid "$tid" -I ALL >> "$LOG_FILE" 2>&1; then
+uci set "tgt.${tid}=target"
+uci set "tgt.${tid}.name=${iqn}"
+uci set "tgt.${tid}_1=lun"
+uci set "tgt.${tid}_1.device=${backing}"
+uci set "tgt.${tid}_1.type=disk"
+uci commit tgt
 echo '{"ok":true}'
 else
 echo '{"error":"tgtadm target export failed (see /tmp/volmgr.log)"}'
 fi
+;;
+target_del)
+test -n "$tid" || { echo '{"error":"Target ID required"}'; exit 0; }
+tgtadm --lld iscsi --op delete --mode target --tid "$tid" >> "$LOG_FILE" 2>&1 || true
+uci delete "tgt.${tid}_1" >/dev/null 2>&1 || true
+uci delete "tgt.${tid}" >/dev/null 2>&1 || true
+uci commit tgt >/dev/null 2>&1 || true
+echo '{"ok":true}'
 ;;
 *) echo '{"error":"Invalid iscsi_action"}'; exit 0 ;;
 esac

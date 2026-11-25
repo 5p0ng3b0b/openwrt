@@ -326,6 +326,14 @@ E('button', { 'class': 'cbi-button cbi-button-action', 'click': openLvCreateModa
 E('pre', { 'style': 'font-size:12px; padding:8px; background:rgba(0,0,0,0.18); border-radius:4px; overflow:auto; max-height:200px;' }, lvmSummary.trim())
 )));
 
+var tgtMatches = (iscsiTgt || '').match(/^Target (\d+): (\S+)/gm) || new Array();
+var tgtDelBtns = tgtMatches.map(function(hdr) {
+  var parts = hdr.replace(':', '').split(/\s+/);
+  var tidNum = parseInt(parts.at(1), 10) || 1;
+  return E('button', { 'class': 'btn cbi-button-negative', 'style': 'margin-right:6px;', 'click': function() {
+    callIscsiAction('target_del', '', '', '', tidNum).then(function(r) { if (r && r.error) ui.addNotification(null, E('p', new Object(), r.error), 'error'); else self.refreshAll(); });
+  } }, _('Unexport Target ') + tidNum + ' (' + (parts.at(2) || '') + ')');
+});
 var iscsiSummary = (iscsiSess || iscsiTgt)
 ? ('Active Initiator Sessions:\n' + (iscsiSess || 'none') + '\n\nExported Target LUNs:\n' + (iscsiTgt || 'none'))
 : _('No active iSCSI initiator sessions or exported target LUNs.');
@@ -339,6 +347,7 @@ E('button', { 'class': 'cbi-button', 'click': openIscsiLoginModal }, _('Connect 
 E('button', { 'class': 'cbi-button cbi-button-action', 'click': openIscsiTargetModal }, _('Export Target LUN'))
 ))
 )),
+tgtDelBtns.length ? E('div', { 'style': 'margin-bottom:8px;' }, tgtDelBtns) : E('span', new Object()),
 E('pre', { 'style': 'font-size:12px; padding:8px; background:rgba(0,0,0,0.18); border-radius:4px; overflow:auto; max-height:200px;' }, iscsiSummary.trim())
 )));
 }

@@ -5,4 +5,9 @@ uci -q commit irqbalance
 /etc/init.d/irqbalance enable >/dev/null 2>&1
 /etc/init.d/irqbalance start >/dev/null 2>&1
 fi
+if [ "$(uci -q get tgt.1.name)" = "iqn.2012-06.org.openwrt:target1" ]; then
+  uci delete tgt.1 2>/dev/null || true
+  uci commit tgt 2>/dev/null || true
+fi
+
 exit 0
