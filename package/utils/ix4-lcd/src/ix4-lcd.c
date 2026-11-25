@@ -542,7 +542,7 @@ static void draw_frame(int cur_pg, int tick) {
 }
 
 static char alert_key[64] = "", alert_l1[32] = "", alert_l2[32] = "", ack_key[64] = "";
-static int last_led_mode = -1;
+static int last_led_mode = 0;
 static void write_sysfs(const char *p, const char *v) { FILE *f = fopen(p, "w"); if (f) { fputs(v, f); fclose(f); } }
 static void set_alert_led(int mode) {
  if (mode == last_led_mode) return;
