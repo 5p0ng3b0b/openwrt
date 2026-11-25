@@ -854,9 +854,17 @@ echo '{"ok":true}'
 ;;
 target_add)
 command -v tgtadm >/dev/null 2>&1 || { echo '{"error":"tgt not installed (enable in Config tab)"}'; exit 0; }
-test -n "$iqn" && is_safe_dev "$backing" || { echo '{"error":"Valid IQN and backing device required"}'; exit 0; }
-test -z "$tid" && tid=1
+test -n "$iqn" || { echo '{"error":"Valid IQN required"}'; exit 0; }
+is_safe_dev "$backing" || case "$backing" in /dev/mapper/control) false ;; /dev/mapper/*) test -b "$backing" ;; *) false ;; esac || { echo '{"error":"Valid backing block device required"}'; exit 0; }
+umount "$backing" >/dev/null 2>&1 || true
+/etc/init.d/tgt enable >/dev/null 2>&1 || true
 /etc/init.d/tgt start >/dev/null 2>&1 || true
+sleep 1
+used_tids=$(tgtadm --lld iscsi --op show --mode target 2>/dev/null | awk '/^Target [0-9]+:/ {gsub(":","",$2); print $2}')
+test -z "$tid" && tid=2
+while printf '%s\n' "$used_tids" | grep -qx "$tid"; do
+tid=$((tid + 1))
+done
 if tgtadm --lld iscsi --op new --mode target --tid "$tid" -T "$iqn" >> "$LOG_FILE" 2>&1 && tgtadm --lld iscsi --op new --mode logicalunit --tid "$tid" --lun 1 -b "$backing" >> "$LOG_FILE" 2>&1 && tgtadm --lld iscsi --op bind --mode target --tid "$tid" -I ALL >> "$LOG_FILE" 2>&1; then
 echo '{"ok":true}'
 else
