@@ -1,3 +1,7 @@
+/* ==========================================================================
+ * Section 1: Lenovo Iomega ix4-300d Front-Panel ST7565R LCD Configuration
+ * Manages UCI /etc/config/ix4-lcd rows, scroll speeds, contrast & logo PNG.
+ * ========================================================================== */
 'use strict';
 'require view';
 'require form';

@@ -1,3 +1,7 @@
+/* ==========================================================================
+ * Lenovo Iomega ix4-300d Safe Power-Off Confirmation View
+ * Triggers clean system halt (which updates the front LCD to Power Off).
+ * ========================================================================== */
 'use strict';
 'require view';
 'require fs';

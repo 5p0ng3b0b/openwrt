@@ -5,6 +5,9 @@
 'require ui';
 'require poll';
 
+/* ==========================================================================
+ * Section 1: Core Partition, Mount & Package RPCD Declarations (volmgr)
+ * ========================================================================== */
 var callList = rpc.declare({ object: 'volmgr', method: 'list', expect: {} });
 var callInfo = rpc.declare({ object: 'volmgr', method: 'info', params: ['disk'], expect: {} });
 var callSmart = rpc.declare({ object: 'volmgr', method: 'smart', params: ['disk'], expect: {} });
@@ -19,6 +22,9 @@ var callSetMeta = rpc.declare({ object: 'volmgr', method: 'set_part_meta', param
 var callMountAct = rpc.declare({ object: 'volmgr', method: 'mount_action', params: ['action', 'part', 'target'], expect: {} });
 var callPkgAct = rpc.declare({ object: 'volmgr', method: 'pkg_action', params: ['action', 'packages'], expect: {} });
 
+/* ==========================================================================
+ * Section 2: Formatting Utilities (Bytes & Duration)
+ * ========================================================================== */
 function fmtBytes(b) {
 b = Number(b) || 0;
 if (b <= 0) return '0 B';
@@ -40,10 +46,14 @@ ntfs: '#1565c0', exfat: '#0277bd', vfat: '#ef6c00',
 swap: '#ad1457', linux_raid_member: '#c62828', LVM2_member: '#4527a0'
 };
 
+/* ==========================================================================
+ * Section 3: Tab 4 - Volumes (Software RAID, LUKS2, LVM2 & iSCSI)
+ * ========================================================================== */
 var callVolumesStatus = rpc.declare({ object: 'volmgr', method: 'volumes_status', expect: new Object() });
 var callRaidAction = rpc.declare({ object: 'volmgr', method: 'raid_action', params: new Array('action', 'array', 'level', 'members', 'name'), expect: new Object() });
 var callLuksAction = rpc.declare({ object: 'volmgr', method: 'luks_action', params: new Array('action', 'part', 'name', 'passphrase'), expect: new Object() });
 
+/** Build the Tab 4 (Volumes) UI for MD RAID arrays and LUKS2 containers. */
 function buildVolumesTabView(self) {
 var wrap = E('div', new Object());
 var statusBox = E('div', { 'style': 'margin-top:10px;' }, E('em', new Object(), _('Loading RAID & LUKS status...')));
@@ -184,6 +194,7 @@ return wrap;
 var callLvmAction = rpc.declare({ object: 'volmgr', method: 'lvm_action', params: new Array('action', 'vg', 'lv', 'size', 'devices'), expect: new Object() });
 var callIscsiAction = rpc.declare({ object: 'volmgr', method: 'iscsi_action', params: new Array('action', 'portal', 'iqn', 'backing', 'tid'), expect: new Object() });
 
+/** Append LVM2 (PV/VG/LV) and iSCSI (Initiator/Target) cards to Tab 4. */
 function appendLvmAndIscsiCards(self, statusBox, candidateParts, st) {
 var pvsRaw = (st && st.lvm_pvs) || '';
 var vgsRaw = (st && st.lvm_vgs) || '';
@@ -306,6 +317,9 @@ E('pre', { 'style': 'font-size:12px; padding:8px; background:rgba(0,0,0,0.18); b
 )));
 }
 
+/* ==========================================================================
+ * Section 4: Tab 5 - Scheduled & On-Demand Rsync Backup Jobs
+ * ========================================================================== */
 var callBackupList = rpc.declare({ object: 'volmgr', method: 'backup_list', expect: new Object() });
 var callBackupSave = rpc.declare({ object: 'volmgr', method: 'backup_save', params: new Array('action', 'id', 'name', 'source', 'dest', 'mode', 'schedule', 'enabled'), expect: new Object() });
 var callBackupRun = rpc.declare({ object: 'volmgr', method: 'backup_run', params: new Array('id'), expect: new Object() });
@@ -323,6 +337,7 @@ Object.defineProperty(map, id, { value: Object.assign(new Object(), Reflect.get(
 return Object.values(map);
 }
 
+/** Build the Tab 5 (Backup) UI for UCI volmgr_backup jobs and live logs. */
 function buildBackupTabView(self) {
 var wrap = E('div', new Object());
 var listBox = E('div', { 'style': 'margin-top:10px;' }, E('em', new Object(), _('Loading rsync backup jobs...')));
@@ -436,6 +451,10 @@ return d.type === 'disk' && !/^(mtd|ubi|loop|ram|zram|mmcblk0)/.test(d.name || '
 });
 },
 
+/* ==========================================================================
+ * Section 5: Partition Map Geometry, Progress Modal & Partition Dialogs
+ * ========================================================================== */
+/** Convert fdisk/parted partition rows and unallocated gaps into segments. */
 buildSegments: function(disk, infoRes) {
 var totalBytes = Number(disk.size) || 1;
 var sfd = (infoRes && infoRes.sfdisk && infoRes.sfdisk.partitiontable) || null;
@@ -511,6 +530,7 @@ if (parts.length > 0) {
 return segs;
 },
 
+/** Poll volmgr.job_status with a live progress bar until completion. */
 runWithProgress: function(title, startPromise, onDone) {
 var barFill = E('div', { 'style': 'height:100%; width:5%; background:#2e7d32; transition:width 0.4s;' });
 var pctEl = E('strong', {}, '5%');
@@ -614,7 +634,8 @@ self.renderMain();
         };
     },
 
-    openCreateModal: function(diskObj, seg, existingLayout) {
+    /** Open GParted-style Create Partition modal with alignment and size slider. */
+openCreateModal: function(diskObj, seg, existingLayout) {
         var self = this;
         var maxMiB = Math.max(1, Math.floor((Number(seg.size) || 0) / (1024 * 1024)));
         var preMiB = 0;
@@ -833,7 +854,8 @@ self.renderMain();
         ]);
     },
 
-    openFormatModal: function(seg) {
+    /** Open Format Partition modal for ext4/btrfs/f2fs/ntfs/exfat/vfat/xfs/swap. */
+openFormatModal: function(seg) {
         var self = this;
         var fsSel = this.buildFsSelect(false); if (seg && seg.fstype) { for (var i = 0; i < fsSel.options.length; i++) { if (fsSel.options[i].value === seg.fstype && !fsSel.options[i].disabled) { fsSel.value = seg.fstype; break; } } }
         var labelInput = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': seg.label || '' });
@@ -857,6 +879,7 @@ function() { self.refreshAll(); }
 ]);
 },
 
+/** Open Resize Partition modal (online/offline grow or shrink). */
 openResizeModal: function(diskObj, seg) {
         var self = this;
         var segs = this.buildSegments(diskObj, this.diskInfo);
@@ -1000,7 +1023,8 @@ openResizeModal: function(diskObj, seg) {
         ]);
     },
 
-    openMoveModal: function(diskObj, seg) {
+    /** Open Move Partition modal to shift partition start offset. */
+openMoveModal: function(diskObj, seg) {
         var self = this;
         var segs = this.buildSegments(diskObj, this.diskInfo);
         var idx = segs.findIndex(function(x) { return x.node === seg.node; });
@@ -1102,7 +1126,8 @@ openResizeModal: function(diskObj, seg) {
         return { pkg: pkg, installed: ok };
     },
 
-    openMetaModal: function(diskObj, seg, existingLayout) {
+    /** Open Edit Partition Metadata modal (label, type/role, GPT/MBR flags). */
+openMetaModal: function(diskObj, seg, existingLayout) {
 var self = this;
 var st = this.getLabelPkgStatus(seg.fstype);
         var lblIn = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': seg.label || '', 'disabled': !st.installed ? 'disabled' : null });
@@ -1645,6 +1670,9 @@ this.rootNode.appendChild(tabBar);
 this.rootNode.appendChild(E('div', { 'class': 'cbi-section' }, [ body ]));
 },
 
+/* ==========================================================================
+ * Section 6: Main View Entry Point & 6-Tab Shell Renderer
+ * ========================================================================== */
 render: function(data) {
 this.disks = this.filterDisks(data.at(0));
 this.installedList = (data.at(1) && data.at(1).installed) || ''; this.kfsList = (data.at(1) && data.at(1).kfs) || ''; this.kbusList = (data.at(1) && data.at(1).kbuses) || '';
