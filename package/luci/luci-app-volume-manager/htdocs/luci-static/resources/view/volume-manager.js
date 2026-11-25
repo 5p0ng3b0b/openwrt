@@ -1365,7 +1365,7 @@ this.disks.forEach(function(d) {
 
 var rows = [
 E('tr', { 'class': 'tr table-titles' }, [
-E('th', { 'class': 'th' }, _('Enabled')), E('th', { 'class': 'th' }, _('Device / UUID')),
+E('th', { 'class': 'th' }, _('Auto-Mount / Status')), E('th', { 'class': 'th' }, _('Device / UUID')),
 E('th', { 'class': 'th' }, _('Mount Point')), E('th', { 'class': 'th' }, _('Filesystem')),
 E('th', { 'class': 'th' }, _('Options')), E('th', { 'class': 'th' }, _('Actions'))
 ])
@@ -1379,16 +1379,16 @@ E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, 
 E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Mount Options')), E('div', { 'class': 'cbi-value-field' }, [ optIn ]) ]),
 E('div', { 'class': 'right' }, [ E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')), ' ', E('button', { 'class': 'btn cbi-button-apply important', 'click': function() {
 uci.set('fstab', sec['.name'], 'target', tgtIn.value.trim()); uci.set('fstab', sec['.name'], 'options', optIn.value.trim()); ui.hideModal();
-uci.save().then(function() { return uci.apply(); }).then(function() { return callMountAct('block_mount', '', ''); }).then(function() { self.refreshAll(); });
+uci.save().then(function() { return uci.apply(); }).then(function() { return uci.confirm(); }).then(function() { return callMountAct('block_mount', '', ''); }).then(function() { self.refreshAll(); });
 } }, _('Save')) ])
 ]);
 };
 mounts.forEach(function(sec) {
 var sid = sec['.name'], partObj = allParts.filter(function(p) { return p.uuid === sec.uuid; }).at(0);
 var isMounted = !!(partObj && partObj.mountpoint), devNode = partObj ? ('/dev/' + partObj.name) : (sec.device || '');
-var enCb = E('input', { 'type': 'checkbox', 'checked': sec.enabled !== '0' ? true : null, 'change': function() {
+var enCb = E('input', { 'type': 'checkbox', 'title': _('Auto-mount on boot (/etc/config/fstab)'), 'checked': sec.enabled !== '0' ? true : null, 'change': function() {
 uci.set('fstab', sid, 'enabled', enCb.checked ? '1' : '0');
-uci.save().then(function() { return uci.apply(); }).then(function() { return callMountAct('block_mount', '', ''); }).then(function() { self.refreshAll(); });
+uci.save().then(function() { return uci.apply(); }).then(function() { return uci.confirm(); }).then(function() { return callMountAct('block_mount', '', ''); }).then(function() { self.refreshAll(); });
 } });
 rows.push(E('tr', { 'class': 'tr' }, [
 E('td', { 'class': 'td' }, [ enCb, ' ', isMounted ? E('span', { 'style': 'color:#4caf50; font-weight:600;' }, _('Mounted')) : E('span', { 'style': 'opacity:0.65;' }, _('Unmounted')) ]),
