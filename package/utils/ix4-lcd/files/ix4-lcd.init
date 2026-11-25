@@ -51,7 +51,7 @@ reset_default() {
 }
 
 start_service() {
-    local enabled default_page backlight invert contrast refresh auto_scroll marquee_ms pixel_scroll save_buttons screensaver alert_wake uci_err
+    local enabled default_page backlight invert contrast refresh auto_scroll marquee_ms pixel_scroll save_buttons uci_err
     if [ -f /etc/config/ix4-lcd ]; then
         uci_err=$(uci show ix4-lcd 2>&1 >/dev/null | head -n 1)
         if [ -n "$uci_err" ]; then
@@ -78,11 +78,9 @@ start_service() {
     config_get marquee_ms general marquee_ms 400
     config_get pixel_scroll general pixel_scroll 6
     config_get_bool save_buttons general save_buttons 1
-    config_get screensaver general screensaver 0
-    config_get_bool alert_wake general alert_wake 1
     : > "$CONF_RUN"
-    printf 'default_page=%d\nbacklight=%d\ninvert=%d\ncontrast=%d\nrefresh=%d\nauto_scroll=%d\nmarquee_ms=%d\npixel_scroll=%d\nsave_buttons=%d\nscreensaver=%d\nalert_wake=%d\n' \
-        "$default_page" "$backlight" "$invert" "$contrast" "$refresh" "$auto_scroll" "$marquee_ms" "$pixel_scroll" "$save_buttons" "$screensaver" "$alert_wake" >> "$CONF_RUN"
+    printf 'default_page=%d\nbacklight=%d\ninvert=%d\ncontrast=%d\nrefresh=%d\nauto_scroll=%d\nmarquee_ms=%d\npixel_scroll=%d\nsave_buttons=%d\n' \
+        "$default_page" "$backlight" "$invert" "$contrast" "$refresh" "$auto_scroll" "$marquee_ms" "$pixel_scroll" "$save_buttons" >> "$CONF_RUN"
     config_foreach emit_token token
     config_foreach emit_page page
     procd_open_instance

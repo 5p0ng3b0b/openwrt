@@ -5,7 +5,6 @@
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <sys/statvfs.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -125,7 +124,7 @@ static char page_bmp[MAX_PAGES][128];
 static char page_b64[MAX_PAGES][1600];
 static int page_bmp_inv[MAX_PAGES];
 static char rendered[8][MAX_OUT];
-static int num_pages = 0, cfg_def_pg = 1, cfg_bl = 3, cfg_inv = 1, cfg_con = 38, cfg_ref = 5, cfg_auto = 0, cfg_ms = 400, cfg_px = 6, cfg_save = 1, cfg_ss = 0, ss_sleep = 0, cfg_alert = 1, alert_active = 0, alert_ack = 0, cfg_err = 0, err_sleep = 0;
+static int num_pages = 0, cfg_def_pg = 1, cfg_bl = 3, cfg_inv = 1, cfg_con = 38, cfg_ref = 5, cfg_auto = 0, cfg_ms = 400, cfg_px = 6, cfg_save = 1, cfg_err = 0, err_sleep = 0;
 static uint64_t prev_rx = 0, prev_tx = 0, prev_ns = 0, cur_rx_bps = 0, cur_tx_bps = 0;
 static uint64_t prev_cpu_busy = 0, prev_cpu_tot = 0;
 
@@ -319,8 +318,6 @@ static void load_conf(const char *path) {
    else if (!strcmp(p, "marquee_ms")) { cfg_ms = atoi(eq); if (cfg_ms < 20) cfg_ms = 20; }
    else if (!strcmp(p, "pixel_scroll")) { int v = atoi(eq); cfg_px = (v == 1 || v == 2 || v == 4 || v == 6) ? v : 6; }
    else if (!strcmp(p, "save_buttons")) cfg_save = atoi(eq) ? 1 : 0;
-   else if (!strcmp(p, "screensaver")) { cfg_ss = atoi(eq); if (cfg_ss < 0) cfg_ss = 0; }
-   else if (!strcmp(p, "alert_wake")) cfg_alert = atoi(eq) ? 1 : 0;
    else if (!strcmp(p, "error")) {
     cfg_err = 1;
     load_defaults();
@@ -541,91 +538,6 @@ static void draw_frame(int cur_pg, int tick) {
  } flush_fb();
 }
 
-static char alert_key[64] = "", alert_l1[32] = "", alert_l2[32] = "", ack_key[64] = "";
-static int last_led_mode = 0;
-static void write_sysfs(const char *p, const char *v) { FILE *f = fopen(p, "w"); if (f) { fputs(v, f); fclose(f); } }
-static void set_alert_led(int mode) {
- if (mode == last_led_mode) return;
- last_led_mode = mode;
- if (mode == 0) {
-  write_sysfs("/sys/class/leds/ix4-300d:sysfail:red/trigger", "none");
-  write_sysfs("/sys/class/leds/ix4-300d:sysfail:red/brightness", "0");
-  write_sysfs("/sys/class/leds/ix4-300d:sys:blue/trigger", "none");
-  write_sysfs("/sys/class/leds/ix4-300d:sys:blue/brightness", "1");
- } else {
-  write_sysfs("/sys/class/leds/ix4-300d:sys:blue/trigger", "none");
-  write_sysfs("/sys/class/leds/ix4-300d:sys:blue/brightness", "0");
-  write_sysfs("/sys/class/leds/ix4-300d:sysfail:red/trigger", "timer");
-  write_sysfs("/sys/class/leds/ix4-300d:sysfail:red/delay_on", mode == 1 ? "300" : "1000");
-  write_sysfs("/sys/class/leds/ix4-300d:sysfail:red/delay_off", mode == 1 ? "300" : "1000");
- }
-}
-static void check_nas_alerts(void) {
- char nk[64] = "", l1[32] = "", l2[32] = "", buf[256];
- FILE *f = fopen("/proc/mdstat", "r");
- if (f) {
-  while (fgets(buf, sizeof(buf), f)) {
-   if (strstr(buf, "[_") || strstr(buf, "_]")) {
-    buf[strcspn(buf, "\r\n")] = 0;
-    snprintf(nk, sizeof(nk), "raid:%s", buf); snprintf(l1, sizeof(l1), "RAID DEGRADED!"); snprintf(l2, sizeof(l2), "%.21s", buf); break;
-   }
-  }
-  fclose(f);
- }
- if (!nk[0]) {
-  struct statvfs sv;
-  if (statvfs("/overlay", &sv) == 0 && sv.f_blocks > 0) {
-   unsigned long pct = (unsigned long)(((sv.f_blocks - sv.f_bavail) * 100ULL) / sv.f_blocks);
-   if (pct >= 95) { snprintf(nk, sizeof(nk), "flash:%lu", pct); snprintf(l1, sizeof(l1), "FLASH FULL!"); snprintf(l2, sizeof(l2), "Overlay %lu%% used", pct); }
-  }
- }
- if (!nk[0] && (f = fopen("/proc/mounts", "r"))) {
-  char dev[96], mnt[96];
-  while (fscanf(f, "%95s %95s %*s %*s %*d %*d", dev, mnt) == 2) {
-   if (!strncmp(mnt, "/mnt/", 5)) {
-    struct statvfs sv;
-    if (statvfs(mnt, &sv) == 0 && sv.f_blocks > 0) {
-     unsigned long pct = (unsigned long)(((sv.f_blocks - sv.f_bavail) * 100ULL) / sv.f_blocks);
-     if (pct >= 95) { snprintf(nk, sizeof(nk), "mnt:%s:%lu", mnt, pct); snprintf(l1, sizeof(l1), "STORAGE FULL!"); snprintf(l2, sizeof(l2), "%.14s %lu%%", mnt, pct); break; }
-    }
-   }
-  }
-  fclose(f);
- }
- if (!nk[0]) {
-  int h;
-  for (h = 0; h < 4 && !nk[0]; h++) {
-   char tp[96]; snprintf(tp, sizeof(tp), "/sys/class/hwmon/hwmon%d/temp1_input", h);
-   if ((f = fopen(tp, "r"))) {
-    long mc = 0;
-    if (fscanf(f, "%ld", &mc) == 1 && mc >= 75000) {
-     snprintf(nk, sizeof(nk), "temp:%ld", mc / 1000); snprintf(l1, sizeof(l1), "OVERHEAT ALERT!"); snprintf(l2, sizeof(l2), "Temp: %ldC", mc / 1000);
-    }
-    fclose(f);
-   }
-  }
- }
- if (!nk[0]) {
-  char s0[16] = "up", s1[16] = "up";
-  if ((f = fopen("/sys/class/net/eth0/operstate", "r"))) { if (fscanf(f, "%15s", s0) != 1) {} fclose(f); }
-  if ((f = fopen("/sys/class/net/eth1/operstate", "r"))) { if (fscanf(f, "%15s", s1) != 1) {} fclose(f); }
-  if (strcmp(s0, "up") != 0 && strcmp(s1, "up") != 0) {
-   snprintf(nk, sizeof(nk), "netdown"); snprintf(l1, sizeof(l1), "NETWORK DOWN!"); snprintf(l2, sizeof(l2), "eth0 & eth1 down");
-  }
- }
- if (!nk[0]) { alert_active = 0; alert_ack = 0; alert_key[0] = 0; ack_key[0] = 0; set_alert_led(0); return; }
- alert_active = 1; snprintf(alert_key, sizeof(alert_key), "%s", nk); snprintf(alert_l1, sizeof(alert_l1), "%s", l1); snprintf(alert_l2, sizeof(alert_l2), "%s", l2);
- alert_ack = (strcmp(alert_key, ack_key) == 0);
- set_alert_led(alert_ack ? 2 : 1);
-}
-static void draw_alert_frame(void) {
- memset(fb, 0, sizeof(fb));
- puts_fb_clip(0, 14, 0, 128, "!! NAS ALERT !!");
- puts_fb_clip(2, 0, 0, 128, alert_l1);
- puts_fb_clip(4, 0, 0, 128, alert_l2);
- puts_fb_clip(7, 0, 0, 128, "Press any btn to ack");
- flush_fb();
-}
 int main(int argc, char **argv) {
  int c0, c1, opt, i, pg = 0, tick = 0, need_mq = 0; const char *cfg_path = "/var/run/ix4-lcd.conf";
  struct gpio_v2_line_request r0, r1; struct sigaction sa = { .sa_handler = on_sig };
@@ -642,62 +554,33 @@ int main(int argc, char **argv) {
  fd0 = r0.fd; fd1 = r1.fd; close(c0); close(c1);
  set_bl_level(cfg_bl); lcd_init((uint8_t)cfg_con, cfg_inv);
  need_mq = refresh_page_data(pg, cfg_auto); draw_frame(pg, tick);
- int elapsed_ms = 0, idle_ms = 0;
+ int elapsed_ms = 0;
  while (running) {
-  int step_ms = (need_mq && !ss_sleep) ? cfg_ms : (cfg_ref * 1000);
-  if (cfg_ss > 0 && !ss_sleep && step_ms > 1000) step_ms = 1000;
+  int step_ms = need_mq ? cfg_ms : (cfg_ref * 1000);
   struct timespec req = { step_ms / 1000, (step_ms % 1000) * 1000000L }, rem = {0, 0};
   int interrupted = (nanosleep(&req, &rem) < 0); if (!running) break;
   int dirty_data = 0;
-  if (next_pg || tog_auto || next_bl || tog_inv) {
-   idle_ms = 0;
-   if (ss_sleep) {
-    next_pg = tog_auto = next_bl = tog_inv = 0;
-    ss_sleep = 0; wr(0, 0xAF); set_bl_level(cfg_bl); elapsed_ms = 0; dirty_data = 1;
-   } else if (cfg_alert && alert_active && !alert_ack) {
-    next_pg = tog_auto = next_bl = tog_inv = 0;
-    alert_ack = 1; snprintf(ack_key, sizeof(ack_key), "%s", alert_key); set_alert_led(2); dirty_data = 1;
-   }
-  }
   if (next_pg) { next_pg = 0; if (cfg_auto) { cfg_auto = 0; save_uci_opt("auto_scroll", 0); } pg = (pg + 1) % num_pages; tick = 0; elapsed_ms = 0; dirty_data = 1; }
   if (tog_auto) { tog_auto = 0; if (cfg_err) { if (system("/etc/init.d/ix4-lcd reset_default &") < 0) {} } else { cfg_auto = !cfg_auto; save_uci_opt("auto_scroll", cfg_auto); if (cfg_auto) pg = (pg + 1) % num_pages; tick = 0; elapsed_ms = 0; dirty_data = 1; } }
   if (next_bl) { next_bl = 0; if (!err_sleep) { cfg_bl = (cfg_bl + 1) & 3; set_bl_level(cfg_bl); save_uci_opt("backlight", cfg_bl); } }
   if (tog_inv) { tog_inv = 0; if (cfg_err) { err_sleep = !err_sleep; if (err_sleep) { memset(fb, 0, sizeof(fb)); flush_fb(); wr(0, 0xAE); set_bl_level(0); } else { wr(0, 0xAF); set_bl_level(cfg_bl); dirty_data = 1; } } else { cfg_inv = !cfg_inv; wr(0, cfg_inv ? 0xA7 : 0xA6); save_uci_opt("invert", cfg_inv); } }
   if (!interrupted) {
    elapsed_ms += step_ms;
-   if (cfg_ss > 0 && !ss_sleep && !cfg_err) {
-    idle_ms += step_ms;
-    if (idle_ms >= cfg_ss * 1000) {
-     ss_sleep = 1;
-     memset(fb, 0, sizeof(fb)); flush_fb(); wr(0, 0xAE); set_bl_level(0);
-    }
-   }
-   if (!ss_sleep && need_mq) {
+   if (need_mq) {
     tick++;
     int r, still = 0;
     for (r = 0; r < 8; r++) if (row_needs_scroll(pg, r, tick)) still = 1;
     need_mq = still;
    }
-   if (!ss_sleep && elapsed_ms >= cfg_ref * 1000) { elapsed_ms = 0; if (cfg_auto) { pg = (pg + 1) % num_pages; tick = 0; } dirty_data = 1; }
+   if (elapsed_ms >= cfg_ref * 1000) { elapsed_ms = 0; if (cfg_auto) { pg = (pg + 1) % num_pages; tick = 0; } dirty_data = 1; }
   }
-  if (!ss_sleep && dirty_data) {
+  if (dirty_data) {
    refresh_page_data(pg, cfg_auto);
    int r, still = 0;
    for (r = 0; r < 8; r++) if (row_needs_scroll(pg, r, tick)) still = 1;
    need_mq = still;
   }
-  if (dirty_data && cfg_alert && !cfg_err) {
-   check_nas_alerts();
-   if (alert_active && !alert_ack && ss_sleep) {
-    ss_sleep = 0; idle_ms = 0; wr(0, 0xAF); set_bl_level(cfg_bl);
-   }
-  } else if (dirty_data && !cfg_alert) {
-   set_alert_led(0);
-  }
-  if (!err_sleep && !ss_sleep) {
-   if (cfg_alert && alert_active && !alert_ack) draw_alert_frame();
-   else if (dirty_data || need_mq) draw_frame(pg, tick);
-  }
+  if (!err_sleep && (dirty_data || need_mq)) draw_frame(pg, tick);
  }
- set_alert_led(0); memset(fb, 0, sizeof(fb)); flush_fb(); wr(0, 0xAE); set_bl_level(0); return 0;
+ memset(fb, 0, sizeof(fb)); flush_fb(); wr(0, 0xAE); set_bl_level(0); return 0;
 }
